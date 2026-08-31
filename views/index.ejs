@@ -1,19 +1,16 @@
 <%- include('partials/header') %>
 
-<section class="hero hero-lg">
-  <p class="eyebrow">Independent — not affiliated with Intel</p>
-  <h1>Intel Arc B70 &amp; B65 — <span class="text-gradient">inference benchmarks with nothing to hide.</span></h1>
+<div class="hero hero-lg hero-home">
+  <h1>AI Inference on Intel Arc GPUs <br>
+    <span class="text-gradient hero-home-tagline">Benchmarks and tested recipies</span></h1>
   <p class="lede">
-    Vulkan vs SYCL. llama.cpp vs vLLM. Every number on this site links to the
-    exact command, software versions, and raw log that produced it — and the
-    <a href="/methodology">methodology</a> documents what's held constant, so
-    the comparisons are actually fair.
+    The inference engines llama.cpp and vLLM, as well as the Vulkan and SYCL backends, are tested and the results are documented, making the choice easy for you. The <a href="/methodology">methodology</a> is documented so that you can replicate results or contribute.
   </p>
   <div class="hero-actions">
     <a class="primary-btn" href="/results">Browse results</a>
     <a class="secondary-btn" href="/submit">Submit a result</a>
   </div>
-</section>
+</div>
 
 <% if (bestRuns.length > 0) {
   const genRates = bestRuns.map(function(r) { return r.generation_tok_s; });
@@ -47,38 +44,25 @@
 <% } %>
 
 <section class="section">
-  <h2>Why Arc — and why keep measuring it</h2>
-  <p class="section-note">Not a spec-sheet argument — three concrete reasons this stack earns a benchmark harness.</p>
+  <h2>Benefits of the Arc Ecosystem</h2>
+  <p class="section-note">Most people learn toward NVIDIA cards for their CUDA stack, but the Intel cards have many benefits that may make them the better choice.</p>
   <div class="feature-grid">
     <div class="feature-card">
-      <span class="feature-index">01</span>
       <h3>Cost per gigabyte of VRAM</h3>
       <p>
-        Local inference is a memory problem before it's a compute problem —
-        model size and context length are what actually gate what you can
-        run. Arc sells VRAM at a meaningfully lower cost per gigabyte than
-        the Nvidia alternatives, which moves larger-model, longer-context
-        setups inside a desktop budget.
+        The massive demand for AI compute has driven costs for all RAM extraordinarily high, making it impossible for many local AI enthusiasts with less to spend to get involved in the hobby. Intel has some of the best cards for VRAM/$, bringing cards with 32gb like the B65 to a price where it does become an option for far more people, and it makes it more affordable for clusters as well.
       </p>
     </div>
     <div class="feature-card">
-      <span class="feature-index">02</span>
-      <h3>A stack that's moving fast</h3>
+      <h3>Rapid development of the stack</h3>
       <p>
-        The SYCL and Vulkan drivers — plus llama.cpp and vLLM support for
-        Arc — all ship improvements release over release. Today's numbers
-        are a floor, not a ceiling; that's exactly why the same matrix gets
-        re-run over time instead of being judged from one stale result.
+        CUDA has been considered the golden standard for years, but Intel's SYCL library is rapidly becoming faster and more reliable, as the Vulkan backend also performs better on Intel GPUs as Mesa, the Linux kernel, and inference enginenes ship bug fixes and performance improvements. The capabilities of these cards will continue to improve, making them a great choice.
       </p>
     </div>
     <div class="feature-card">
-      <span class="feature-index">03</span>
-      <h3>Open and reproducible</h3>
+      <h3>Growing usage in the community</h3>
       <p>
-        Every result links back to the command, versions, and raw log behind
-        it — no screenshots, no unverifiable claims. The site is fully
-        independent, and the <a href="/methodology">methodology</a> spells
-        out what's held constant and what each metric measures.
+        The local AI community has come to recognize the value of Intel's offering, and is increasingly purchasing and supporting the Intel cards, leading to more development support in the applications involved in the running and hosting of local AI. This means more people sharing the work they're doing on these cards, and a supportive community for those willing to join.
       </p>
     </div>
   </div>

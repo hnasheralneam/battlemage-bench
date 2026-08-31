@@ -8,8 +8,12 @@
 #   ./run-matrix.sh \
 #     --llamacpp-model-path /path/model.gguf --llamacpp-model-name "Name" --llamacpp-quantization "Q4_K_M" \
 #     --vllm-model /path-or-hf-id --vllm-model-name "Name" --vllm-quantization "AWQ-4bit" \
-#     [--repeats 3] [--concurrency-levels 1,2,4,8,16] \
+#     [--repeats 3] [--concurrency-levels 1,2,4,8,16] [--card B70] \
 #     [--results-file results/<timestamp>.jsonl]
+#
+# --card restricts the run to cells for just one card (e.g. only B70 is
+# physically installed right now) — omit it to run every card in
+# matrix.json.
 #
 # Model/quant have no defaults — the site's methodology doesn't force
 # llama.cpp and vLLM to use equivalent model/quant formats, so both must be
@@ -24,11 +28,11 @@ usage() {
 Usage: run-matrix.sh \
   --llamacpp-model-path <gguf> --llamacpp-model-name <name> --llamacpp-quantization <quant> \
   --vllm-model <path-or-hf-id> --vllm-model-name <name> --vllm-quantization <quant> \
-  [--repeats 3] [--concurrency-levels 1,2,4,8,16] [--results-file <path>]
+  [--repeats 3] [--concurrency-levels 1,2,4,8,16] [--card B70] [--results-file <path>]
 
-Runs every cell in matrix.json in turn. Pauses before each card switch and
-asks you to confirm the right physical GPU is active — card selection is
-never auto-detected.
+Runs every cell in matrix.json in turn (or only the cells for --card, if
+given). Pauses before each card switch and asks you to confirm the right
+physical GPU is active — card selection is never auto-detected.
 EOF
   exit 1
 }
@@ -41,6 +45,7 @@ VLLM_MODEL_NAME=""
 VLLM_QUANTIZATION=""
 REPEATS=""
 CONCURRENCY_LEVELS=""
+CARD_FILTER=""
 RESULTS_FILE="$SCRIPT_DIR/results/$(date +%Y%m%d-%H%M%S).jsonl"
 
 while [[ $# -gt 0 ]]; do
@@ -53,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --vllm-quantization) VLLM_QUANTIZATION="$2"; shift 2 ;;
     --repeats) REPEATS="$2"; shift 2 ;;
     --concurrency-levels) CONCURRENCY_LEVELS="$2"; shift 2 ;;
+    --card) CARD_FILTER="$2"; shift 2 ;;
     --results-file) RESULTS_FILE="$2"; shift 2 ;;
     -h|--help) usage ;;
     *) echo "Unknown arg: $1"; usage ;;
@@ -74,8 +80,16 @@ echo "Caching system info..."
 
 CELLS=$(node -e "
   const m = require('$MATRIX_FILE');
-  m.cells.forEach((c) => console.log(c.card + '|' + c.backend + '|' + c.runtime));
-")
+  const cardFilter = process.argv[1] || null;
+  m.cells
+    .filter((c) => !cardFilter || c.card === cardFilter)
+    .forEach((c) => console.log(c.card + '|' + c.backend + '|' + c.runtime));
+" "$CARD_FILTER")
+
+if [[ -z "$CELLS" ]]; then
+  echo "No cells match --card '$CARD_FILTER' in $MATRIX_FILE — nothing to run."
+  exit 1
+fi
 
 LAST_CARD=""
 while IFS='|' read -r CARD BACKEND RUNTIME; do

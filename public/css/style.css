@@ -216,8 +216,8 @@ h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  color: #fff;
+  background: var(--accent);
   border-radius: var(--radius-sm);
   padding: 0.18rem 0.38rem;
   margin-right: 0.6rem;
@@ -287,6 +287,7 @@ h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
   grid-template-columns: 1fr;
   gap: var(--space-5);
   align-items: center;
+  text-align: center;
 }
 @media (min-width: 800px) {
   .hero { grid-template-columns: 1.4fr 1fr; }
@@ -297,6 +298,14 @@ h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
 .hero-actions .primary-btn, .hero-actions .secondary-btn { margin-top: 0; }
 
 .hero-lg { grid-template-columns: 1fr; padding-top: 3.5rem; }
+.hero-home { margin: 3rem 0; width: 100%; }
+/* .lede is a width-constrained block (62ch), so it needs auto side margins
+   to sit centered in the hero's single grid track — text-align alone only
+   centers the text inside its box. (The h1 equivalent lives below, after
+   .hero-lg h1, which would otherwise win the cascade on equal specificity.) */
+.hero-home .lede { margin-left: auto; margin-right: auto; }
+.hero-home-tagline { font-size: 3rem; }
+.hero-home .hero-actions { justify-content: center; }
 .eyebrow {
   margin: 0 0 1rem;
   color: var(--accent);
@@ -315,6 +324,8 @@ h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
   margin: 0 0 1.1rem;
 }
 .hero-lg .lede { font-size: 1.12rem; line-height: 1.65; }
+/* Placed after .hero-lg h1 so the auto side margins win on equal specificity. */
+.hero-home h1 { margin: 2.5rem auto 1.1rem; }
 .text-gradient {
   background: linear-gradient(92deg, var(--accent) 20%, var(--blob-3));
   -webkit-background-clip: text;
@@ -630,6 +641,16 @@ details[open] summary { margin-bottom: 0.25rem; }
 .flash-success { background: var(--ok-bg); color: var(--ok-text); border-color: color-mix(in srgb, var(--ok-text) 35%, transparent); }
 .flash-error { background: var(--warn-bg); color: var(--warn-text); border-color: color-mix(in srgb, var(--warn-text) 35%, transparent); }
 
+/* ---- 404 ---- */
+
+.not-found {
+  min-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
 /* ---- Footer ---- */
 
 .site-footer {
@@ -662,12 +683,23 @@ details[open] summary { margin-bottom: 0.25rem; }
 }
 .footer-col { display: flex; flex-direction: column; }
 .footer-col a {
+  position: relative;
   color: var(--text);
   text-decoration: none;
   padding: 0.22rem 0;
+  transition: .2s;
 }
-.footer-col a:hover { color: var(--accent); }
-.footer-bottom { border-top: 1px solid var(--border); }
+.footer-col a::before {
+  content: ">";
+  position: absolute;
+  left: 0;
+  opacity: 0;
+  transform: translateX(-.6rem);
+  transition: opacity .2s, transform .2s;
+}
+.footer-col a:hover { padding-left: .8rem; }
+.footer-col a:hover::before { opacity: 1; transform: translateX(0); }
+.footer-bottom { border-top: 1px solid var(--border); text-align: center; }
 .footer-bottom p {
   max-width: 1200px;
   margin: 0 auto;
@@ -677,6 +709,7 @@ details[open] summary { margin-bottom: 0.25rem; }
   letter-spacing: 0.04em;
   color: var(--text-muted);
 }
+.grayscale-icon { filter: grayscale(100%); }
 
 /* ---- Agent box ---- */
 
