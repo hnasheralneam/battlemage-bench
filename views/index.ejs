@@ -1,0 +1,174 @@
+<%- include('partials/header') %>
+
+<section class="hero hero-lg">
+  <p class="eyebrow">Independent — not affiliated with Intel</p>
+  <h1>Intel Arc B70 &amp; B65 — <span class="text-gradient">inference benchmarks with nothing to hide.</span></h1>
+  <p class="lede">
+    Vulkan vs SYCL. llama.cpp vs vLLM. Every number on this site links to the
+    exact command, software versions, and raw log that produced it — and the
+    <a href="/methodology">methodology</a> documents what's held constant, so
+    the comparisons are actually fair.
+  </p>
+  <div class="hero-actions">
+    <a class="primary-btn" href="/results">Browse results</a>
+    <a class="secondary-btn" href="/submit">Submit a result</a>
+  </div>
+</section>
+
+<% if (bestRuns.length > 0) {
+  const genRates = bestRuns.map(function(r) { return r.generation_tok_s; });
+  const bestGen = Math.max.apply(null, genRates);
+  const cardCount = new Set(bestRuns.map(function(r) { return r.card; })).size;
+%>
+  <div class="stat-row stat-row-lg">
+    <div class="stat">
+      <span class="stat-value"><%= bestRuns.length %></span>
+      <span class="stat-label">configurations benchmarked</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value"><%= fmt.num(bestGen) %> tok/s</span>
+      <span class="stat-label">best generation throughput</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value"><%= cardCount %></span>
+      <span class="stat-label">card<%= cardCount === 1 ? '' : 's' %> tested</span>
+    </div>
+    <% if (stats.bestEfficiency != null) { %>
+      <div class="stat">
+        <span class="stat-value"><%= fmt.num(stats.bestEfficiency, 2) %></span>
+        <span class="stat-label">best tok/s per watt</span>
+      </div>
+    <% } %>
+    <div class="stat">
+      <span class="stat-value"><%= stats.verifiedCount %></span>
+      <span class="stat-label">verified submission<%= stats.verifiedCount === 1 ? '' : 's' %></span>
+    </div>
+  </div>
+<% } %>
+
+<section class="section">
+  <h2>Why Arc — and why keep measuring it</h2>
+  <p class="section-note">Not a spec-sheet argument — three concrete reasons this stack earns a benchmark harness.</p>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <span class="feature-index">01</span>
+      <h3>Cost per gigabyte of VRAM</h3>
+      <p>
+        Local inference is a memory problem before it's a compute problem —
+        model size and context length are what actually gate what you can
+        run. Arc sells VRAM at a meaningfully lower cost per gigabyte than
+        the Nvidia alternatives, which moves larger-model, longer-context
+        setups inside a desktop budget.
+      </p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-index">02</span>
+      <h3>A stack that's moving fast</h3>
+      <p>
+        The SYCL and Vulkan drivers — plus llama.cpp and vLLM support for
+        Arc — all ship improvements release over release. Today's numbers
+        are a floor, not a ceiling; that's exactly why the same matrix gets
+        re-run over time instead of being judged from one stale result.
+      </p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-index">03</span>
+      <h3>Open and reproducible</h3>
+      <p>
+        Every result links back to the command, versions, and raw log behind
+        it — no screenshots, no unverifiable claims. The site is fully
+        independent, and the <a href="/methodology">methodology</a> spells
+        out what's held constant and what each metric measures.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Best result per configuration</h2>
+  <p class="section-note">Highest observed generation throughput for each card × backend × runtime combination — every row links to the full run data.</p>
+
+  <div class="table-scroll">
+    <table class="matrix-table">
+      <thead>
+        <tr>
+          <th>Card</th>
+          <th>Backend</th>
+          <th>Runtime</th>
+          <th>Gen tok/s</th>
+          <th>Prompt eval tok/s</th>
+          <th>tok/s per W</th>
+          <th>VRAM used</th>
+          <th>Stability</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% bestRuns.forEach(function(r) { %>
+          <tr>
+            <td><%= r.card %></td>
+            <td><%= r.backend %></td>
+            <td><%= r.runtime %></td>
+            <td class="num"><%= fmt.num(r.generation_tok_s) %></td>
+            <td class="num"><%= fmt.num(r.prompt_eval_tok_s) %></td>
+            <td class="num"><%= fmt.num(r.tok_s_per_watt, 2) %></td>
+            <td class="num"><%= fmt.int(r.vram_used_mb) %> MB</td>
+            <td>
+              <% if (r.crashed) { %>
+                <span class="badge badge-warn">crashed</span>
+              <% } else { %>
+                <span class="badge badge-ok">stable</span>
+              <% } %>
+            </td>
+            <td><a href="/configs/<%= r.card %>/<%= r.backend %>/<%= r.runtime %>">Details →</a></td>
+          </tr>
+        <% }) %>
+        <% if (bestRuns.length === 0) { %>
+          <tr><td colspan="9">No verified results yet.</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<% if (bestRuns.length > 0) { %>
+<section class="section">
+  <h2>Generation throughput at a glance</h2>
+  <p class="section-note">Best run per configuration, side by side.</p>
+  <div class="chart-wrap">
+    <canvas id="best-runs-chart" height="110"
+      data-chart="<%- fmt.chartAttr(bestRuns.map(function(r) {
+        return { label: r.card + ' / ' + r.backend + ' / ' + r.runtime,
+                 generation_tok_s: r.generation_tok_s, tok_s_per_watt: r.tok_s_per_watt };
+      })) %>"></canvas>
+  </div>
+</section>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="/js/charts-index.js"></script>
+<% } %>
+
+<section class="section">
+  <h2>Go deeper</h2>
+  <div class="link-card-grid">
+    <a class="link-card" href="/results">
+      <span class="link-card-index">01</span>
+      <h3>Full results table</h3>
+      <p>Every verified run — filter by card, backend, runtime, quant, and concurrency; sort on any metric.</p>
+      <span class="link-card-arrow" aria-hidden="true">→</span>
+    </a>
+    <a class="link-card" href="/methodology">
+      <span class="link-card-index">02</span>
+      <h3>Methodology</h3>
+      <p>The test matrix, what's held constant across runs, and what each metric actually measures.</p>
+      <span class="link-card-arrow" aria-hidden="true">→</span>
+    </a>
+    <a class="link-card" href="/submit">
+      <span class="link-card-index">03</span>
+      <h3>Submit a result</h3>
+      <p>Add your hardware to the matrix — a copyable prompt lets your own AI agent fill in the details.</p>
+      <span class="link-card-arrow" aria-hidden="true">→</span>
+    </a>
+  </div>
+</section>
+
+<%- include('partials/footer') %>

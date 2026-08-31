@@ -1,0 +1,12 @@
+{
+  "concurrency_default": [1, 2, 4, 8, 16],
+  "repeats_default": 3,
+  "cells": [
+    { "card": "B70", "backend": "Vulkan", "runtime": "llama.cpp" },
+    { "card": "B70", "backend": "SYCL",   "runtime": "llama.cpp" },
+    { "card": "B70", "backend": "SYCL",   "runtime": "vLLM" },
+    { "card": "B65", "backend": "Vulkan", "runtime": "llama.cpp" },
+    { "card": "B65", "backend": "SYCL",   "runtime": "llama.cpp" },
+    { "card": "B65", "backend": "SYCL",   "runtime": "vLLM" }
+  ]
+}

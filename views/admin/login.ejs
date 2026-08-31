@@ -1,0 +1,16 @@
+<%- include('../partials/header') %>
+<section class="section">
+  <h1>Admin login</h1>
+  <% if (error) { %>
+    <div class="flash flash-error"><%= error %></div>
+  <% } %>
+  <form method="post" action="/admin/login" class="login-form">
+    <input type="hidden" name="next" value="<%= next %>">
+    <div class="form-row">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autofocus required>
+    </div>
+    <button type="submit" class="primary-btn">Log in</button>
+  </form>
+</section>
+<%- include('../partials/footer') %>

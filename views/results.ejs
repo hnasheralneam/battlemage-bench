@@ -1,0 +1,126 @@
+<%
+function sortLink(column, label) {
+  const nextDir = (filters.sort === column && filters.dir === 'desc') ? 'asc' : 'desc';
+  const params = new URLSearchParams({
+    card: filters.card, backend: filters.backend, runtime: filters.runtime,
+    quant: filters.quant, concurrency: filters.concurrency,
+    sort: column, dir: nextDir,
+  });
+  const arrow = filters.sort === column ? (filters.dir === 'desc' ? ' ▾' : ' ▴') : '';
+  return `<a href="/results?${params.toString()}">${label}${arrow}</a>`;
+}
+%>
+<%- include('partials/header') %>
+
+<section class="section">
+  <h1>All results</h1>
+  <p class="section-note">
+    Every verified run in the database — filter, sort on any metric, and
+    expand a row to see the exact command, driver/SDK versions, and system
+    metadata behind the number.
+  </p>
+
+  <form class="filter-form" method="get" action="/results">
+    <label>Card
+      <select name="card">
+        <option value="">Any</option>
+        <% CARDS.forEach(function(c) { %>
+          <option value="<%= c %>" <%= filters.card === c ? 'selected' : '' %>><%= c %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Backend
+      <select name="backend">
+        <option value="">Any</option>
+        <% BACKENDS.forEach(function(b) { %>
+          <option value="<%= b %>" <%= filters.backend === b ? 'selected' : '' %>><%= b %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Runtime
+      <select name="runtime">
+        <option value="">Any</option>
+        <% RUNTIMES.forEach(function(rt) { %>
+          <option value="<%= rt %>" <%= filters.runtime === rt ? 'selected' : '' %>><%= rt %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Quant
+      <input type="text" name="quant" value="<%= filters.quant %>" placeholder="e.g. Q4_K_M">
+    </label>
+    <label>Concurrency
+      <input type="number" name="concurrency" min="1" value="<%= filters.concurrency %>">
+    </label>
+    <div class="filter-actions">
+      <button type="submit">Filter</button>
+      <a class="reset-link" href="/results">Reset</a>
+    </div>
+  </form>
+
+  <div class="table-scroll">
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Card</th>
+          <th>Backend</th>
+          <th>Runtime</th>
+          <th>Model</th>
+          <th>Quant</th>
+          <th>Concurrency</th>
+          <th><%- sortLink('context_length', 'Context') %></th>
+          <th><%- sortLink('prompt_eval_tok_s', 'Prompt eval tok/s') %></th>
+          <th><%- sortLink('generation_tok_s', 'Gen tok/s') %></th>
+          <th><%- sortLink('tok_s_per_watt', 'tok/s per W') %></th>
+          <th><%- sortLink('vram_used_mb', 'VRAM') %></th>
+          <th>Stability</th>
+          <th>Flags / command</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% rows.forEach(function(r) { %>
+          <tr>
+            <td><a href="/configs/<%= r.card %>/<%= r.backend %>/<%= r.runtime %>"><%= r.card %></a></td>
+            <td><%= r.backend %></td>
+            <td><%= r.runtime %></td>
+            <td><%= r.model_name %></td>
+            <td><%= r.quantization %></td>
+            <td class="num"><%= r.concurrency %></td>
+            <td class="num"><%= fmt.int(r.context_length) %></td>
+            <td class="num"><%= fmt.num(r.prompt_eval_tok_s) %></td>
+            <td class="num"><%= fmt.num(r.generation_tok_s) %></td>
+            <td class="num"><%= fmt.num(r.tok_s_per_watt, 2) %></td>
+            <td class="num"><%= fmt.int(r.vram_used_mb) %> MB</td>
+            <td>
+              <% if (r.crashed) { %>
+                <span class="badge badge-warn">crashed</span>
+              <% } else { %>
+                <span class="badge badge-ok">stable</span>
+              <% } %>
+            </td>
+            <td>
+              <details>
+                <summary>show</summary>
+                <pre class="command-block"><%= r.full_command %></pre>
+                <dl class="run-meta">
+                  <dt>OS</dt><dd><%= fmt.text(r.os_name) %></dd>
+                  <dt>Kernel</dt><dd><%= fmt.text(r.kernel_version) %></dd>
+                  <dt>Driver</dt><dd><%= fmt.text(r.gpu_driver_version) %></dd>
+                  <dt>SDK</dt><dd><%= fmt.text(r.sdk_version) %></dd>
+                  <dt>Runtime ver.</dt><dd><%= fmt.text(r.runtime_version) %></dd>
+                  <dt>Flash attn</dt><dd><%= fmt.text(r.flash_attention) %></dd>
+                  <dt>MTP</dt><dd><%= fmt.text(r.mtp) %></dd>
+                  <dt>Tensor split</dt><dd><%= fmt.text(r.tensor_split) %></dd>
+                </dl>
+              </details>
+            </td>
+          </tr>
+        <% }) %>
+        <% if (rows.length === 0) { %>
+          <tr><td colspan="13">No verified results match these filters.</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<%- include('partials/footer') %>

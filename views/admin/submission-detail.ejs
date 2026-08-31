@@ -1,0 +1,127 @@
+<%
+function escapeHtml(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function field(name, label, opts) {
+  opts = opts || {};
+  const type = opts.type || 'text';
+  const rawValue = submission[name] === undefined || submission[name] === null ? '' : submission[name];
+  const value = escapeHtml(rawValue);
+  const error = errors[name];
+  let control;
+  if (type === 'select') {
+    control = `<select id="${name}" name="${name}">` +
+      opts.options.map((o) => `<option value="${escapeHtml(o)}" ${rawValue === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('') +
+      `</select>`;
+  } else if (type === 'textarea') {
+    control = `<textarea id="${name}" name="${name}" rows="${opts.rows || 3}">${value}</textarea>`;
+  } else {
+    control = `<input type="${type}" id="${name}" name="${name}" value="${value}" ${opts.step ? `step="${opts.step}"` : ''}>`;
+  }
+  return `<div class="form-row${error ? ' has-error' : ''}">` +
+    `<label for="${name}">${escapeHtml(label)}</label>` +
+    control +
+    (error ? `<span class="field-error">${escapeHtml(error)}</span>` : '') +
+    `</div>`;
+}
+%>
+<%- include('../partials/header') %>
+
+<section class="section">
+  <div class="admin-header">
+    <h1>Submission #<%= submission.id %> <span class="badge badge-status-<%= submission.status %>"><%= submission.status %></span></h1>
+    <form method="post" action="/admin/logout"><button type="submit" class="secondary-btn">Log out</button></form>
+  </div>
+
+  <div class="admin-decision-actions">
+    <form method="post" action="/admin/submissions/<%= submission.id %>/approve">
+      <button type="submit" class="secondary-btn approve-btn">Approve</button>
+    </form>
+    <form method="post" action="/admin/submissions/<%= submission.id %>/reject">
+      <button type="submit" class="secondary-btn reject-btn">Reject</button>
+    </form>
+    <a href="/admin" class="back-link">← Back to queue</a>
+  </div>
+
+  <form method="post" action="/admin/submissions/<%= submission.id %>/edit" id="edit-form">
+    <div class="form-grid">
+      <fieldset>
+        <legend>About submitter</legend>
+        <%- field('submitter_name', 'Name / handle') %>
+        <%- field('submitter_contact', 'Contact') %>
+      </fieldset>
+
+      <fieldset>
+        <legend>What was tested</legend>
+        <%- field('card', 'Card', { type: 'select', options: CARDS }) %>
+        <%- field('backend', 'Backend', { type: 'select', options: BACKENDS }) %>
+        <%- field('runtime', 'Runtime', { type: 'select', options: RUNTIMES }) %>
+        <%- field('model_name', 'Model') %>
+        <%- field('quantization', 'Quantization') %>
+        <div class="field-pair">
+          <%- field('concurrency', 'Concurrency', { type: 'number' }) %>
+          <%- field('context_length', 'Context length', { type: 'number' }) %>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Flags &amp; configuration</legend>
+        <div class="field-pair">
+          <%- field('flash_attention', 'Flash attention', { type: 'select', options: TRISTATE }) %>
+          <%- field('mtp', 'MTP', { type: 'select', options: TRISTATE }) %>
+        </div>
+        <%- field('tensor_split', 'Tensor split') %>
+        <%- field('full_command', 'Full command', { type: 'textarea', rows: 3 }) %>
+      </fieldset>
+
+      <fieldset>
+        <legend>System &amp; software versions</legend>
+        <%- field('os_name', 'OS') %>
+        <%- field('kernel_version', 'Kernel version') %>
+        <%- field('gpu_driver_version', 'GPU driver version') %>
+        <%- field('sdk_version', 'SDK version') %>
+        <%- field('runtime_version', 'Runtime version') %>
+      </fieldset>
+
+      <fieldset>
+        <legend>Power &amp; memory</legend>
+        <div class="field-pair" style="--field-pair-cols: 3;">
+          <%- field('power_limit_watts', 'Power limit (W)', { type: 'number', step: '0.1' }) %>
+          <%- field('measured_power_draw_watts', 'Measured power draw (W)', { type: 'number', step: '0.1' }) %>
+          <%- field('vram_used_mb', 'VRAM used (MB)', { type: 'number' }) %>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Results</legend>
+        <div class="field-pair">
+          <%- field('prompt_eval_tok_s', 'Prompt eval tok/s') %>
+          <%- field('generation_tok_s', 'Generation tok/s') %>
+        </div>
+        <p class="section-note">tok/s per W (computed): <%= fmt.num(submission.tok_s_per_watt, 2) %></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Stability &amp; notes</legend>
+        <div class="form-row form-row-checkbox">
+          <label for="crashed">
+            <input type="checkbox" id="crashed" name="crashed" <%= submission.crashed ? 'checked' : '' %>>
+            Run crashed or was unstable
+          </label>
+        </div>
+        <%- field('stability_notes', 'Stability notes', { type: 'textarea', rows: 2 }) %>
+        <%- field('raw_log', 'Raw log output', { type: 'textarea', rows: 8 }) %>
+        <%- field('notes', 'Submitter notes', { type: 'textarea', rows: 2 }) %>
+        <%- field('admin_notes', 'Admin notes (internal, never shown publicly)', { type: 'textarea', rows: 2 }) %>
+      </fieldset>
+    </div>
+
+    <button type="submit" class="primary-btn">Save changes</button>
+  </form>
+</section>
+<%- include('../partials/footer') %>

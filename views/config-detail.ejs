@@ -1,0 +1,120 @@
+<%- include('partials/header') %>
+
+<section class="section">
+  <h1><%= card %> · <%= backend %> · <%= runtime %></h1>
+  <p class="section-note">
+    Every verified run for this card/backend/runtime combination, across the
+    context lengths and concurrency levels tested so far.
+  </p>
+
+  <% if (runs.length === 0) { %>
+    <p class="empty-state">No verified runs yet for this configuration. <a href="/submit">Submit one →</a></p>
+  <% } else {
+    const genRates = runs.map(function(r) { return r.generation_tok_s; });
+    const wattRates = runs.map(function(r) { return r.tok_s_per_watt; }).filter(function(v) { return v !== null && v !== undefined; });
+    const bestGen = Math.max.apply(null, genRates);
+    const bestWatt = wattRates.length ? Math.max.apply(null, wattRates) : null;
+  %>
+    <div class="stat-row">
+      <div class="stat">
+        <span class="stat-value"><%= runs.length %></span>
+        <span class="stat-label">runs recorded</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value"><%= fmt.num(bestGen) %> tok/s</span>
+        <span class="stat-label">best generation throughput</span>
+      </div>
+      <% if (bestWatt !== null) { %>
+        <div class="stat">
+          <span class="stat-value"><%= fmt.num(bestWatt, 2) %></span>
+          <span class="stat-label">best tok/s per W</span>
+        </div>
+      <% } %>
+    </div>
+    <div class="chart-grid">
+      <div class="chart-wrap">
+        <h3>Generation tok/s vs. context length</h3>
+        <canvas id="context-chart" height="180"
+          data-chart="<%- fmt.chartAttr(runs.map(function(r) {
+            return { context_length: r.context_length, concurrency: r.concurrency, generation_tok_s: r.generation_tok_s };
+          })) %>"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <h3>Generation tok/s by quantization</h3>
+        <canvas id="quant-chart" height="180"
+          data-chart="<%- fmt.chartAttr(runs.map(function(r) {
+            return { quantization: r.quantization, generation_tok_s: r.generation_tok_s };
+          })) %>"></canvas>
+      </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="/js/charts-config-detail.js"></script>
+
+    <div class="table-scroll">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Quant</th>
+            <th>Concurrency</th>
+            <th>Context</th>
+            <th>Prompt eval tok/s</th>
+            <th>Gen tok/s</th>
+            <th>tok/s per W</th>
+            <th>VRAM</th>
+            <th>Stability</th>
+            <th>Flags / log</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% runs.forEach(function(r) { %>
+            <tr>
+              <td><%= r.model_name %></td>
+              <td><%= r.quantization %></td>
+              <td class="num"><%= r.concurrency %></td>
+              <td class="num"><%= fmt.int(r.context_length) %></td>
+              <td class="num"><%= fmt.num(r.prompt_eval_tok_s) %></td>
+              <td class="num"><%= fmt.num(r.generation_tok_s) %></td>
+              <td class="num"><%= fmt.num(r.tok_s_per_watt, 2) %></td>
+              <td class="num"><%= fmt.int(r.vram_used_mb) %> MB</td>
+              <td>
+                <% if (r.crashed) { %>
+                  <span class="badge badge-warn">crashed</span><% if (r.stability_notes) { %> <span class="run-notes"><%= r.stability_notes %></span><% } %>
+                <% } else { %>
+                  <span class="badge badge-ok">stable</span>
+                <% } %>
+              </td>
+              <td>
+                <details>
+                  <summary>show</summary>
+                  <pre class="command-block"><%= r.full_command %></pre>
+                  <dl class="run-meta">
+                    <dt>OS</dt><dd><%= fmt.text(r.os_name) %></dd>
+                    <dt>Kernel</dt><dd><%= fmt.text(r.kernel_version) %></dd>
+                    <dt>Driver</dt><dd><%= fmt.text(r.gpu_driver_version) %></dd>
+                    <dt>SDK</dt><dd><%= fmt.text(r.sdk_version) %></dd>
+                    <dt>Runtime ver.</dt><dd><%= fmt.text(r.runtime_version) %></dd>
+                    <dt>Flash attn</dt><dd><%= fmt.text(r.flash_attention) %></dd>
+                    <dt>MTP</dt><dd><%= fmt.text(r.mtp) %></dd>
+                    <dt>Tensor split</dt><dd><%= fmt.text(r.tensor_split) %></dd>
+                    <dt>Power limit</dt><dd><%= fmt.num(r.power_limit_watts, 0) %> W</dd>
+                    <dt>Measured draw</dt><dd><%= fmt.num(r.measured_power_draw_watts, 0) %> W</dd>
+                  </dl>
+                  <% if (r.raw_log) { %>
+                    <details>
+                      <summary>raw log</summary>
+                      <pre class="log-block"><%= r.raw_log %></pre>
+                    </details>
+                  <% } %>
+                  <% if (r.notes) { %><p class="run-notes"><%= r.notes %></p><% } %>
+                </details>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>

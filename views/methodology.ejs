@@ -1,0 +1,149 @@
+<%- include('partials/header') %>
+
+<section class="section prose">
+  <h1>Methodology</h1>
+  <p>
+    This page explains what's held constant across benchmark runs, what each
+    metric means, and where results can legitimately differ. Read it before
+    comparing numbers across configurations — Vulkan vs SYCL and llama.cpp vs
+    vLLM are not measuring quite the same thing, and the raw flags attached
+    to every result exist so you can judge that for yourself.
+  </p>
+
+  <h2>The test matrix</h2>
+  <p>
+    vLLM has no Vulkan backend on Intel GPUs (SYCL/XPU only), so the real
+    matrix is three runtime×backend combinations, not a full 2×2 — each run
+    across both cards and a concurrency sweep from single-stream up through
+    fairly saturated batching:
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>Runtime</th><th>Backend</th><th>Cards</th><th>Concurrency levels</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>llama.cpp</td><td>Vulkan</td><td>B70, B65</td><td>1, 2, 4, 8, 16</td></tr>
+        <tr><td>llama.cpp</td><td>SYCL</td><td>B70, B65</td><td>1, 2, 4, 8, 16</td></tr>
+        <tr><td>vLLM</td><td>SYCL</td><td>B70, B65</td><td>1, 2, 4, 8, 16</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    Concurrency 1 is the single-session case; 2 through 16 are the parallel-
+    session case — the same sweep answers both questions rather than treating
+    "single vs. parallel" as a separate axis.
+  </p>
+
+  <h2>What's held constant</h2>
+  <ul>
+    <li>
+      <strong>Model/quant is not forced to match across runtimes.</strong>
+      llama.cpp and vLLM typically use different model formats entirely
+      (GGUF quants like Q4_K_M vs. AWQ/GPTQ/FP8/unquantized) — this site
+      doesn't pretend those are the same thing. What <em>is</em> held
+      constant is the model/quant used for a given runtime across its own
+      concurrency sweep and both cards, so single-vs-parallel and
+      B70-vs-B65 comparisons stay valid within that runtime. Always check a
+      result's flags (every row has them) before comparing across runtimes.
+    </li>
+    <li>
+      <strong>Repeats.</strong> Each cell in the matrix is run 3 times; the
+      first run is discarded as a warmup (JIT/cache effects) and the
+      published number is the median of the remaining runs. All raw
+      per-repeat output is kept in each result's raw log, not just the
+      median.
+    </li>
+    <li>
+      <strong>Context size is a total budget, not a per-session one.</strong>
+      llama.cpp's <code>--ctx-size</code> is the total KV-cache budget
+      across all parallel slots, split evenly — so at a fixed context size,
+      each session's effective context shrinks as concurrency goes up (e.g.
+      a 16-way run gets 1/16th the context of a single-stream run at the
+      same setting). This is intentional — it mirrors a real memory-
+      constrained serving setup — but it means "context length" in the
+      results table is the ceiling per session at that concurrency level,
+      not a fixed constant across a whole sweep.
+    </li>
+    <li>
+      <strong>Card selection is operator-confirmed, not auto-detected.</strong>
+      Nothing in the benchmark tooling inspects which physical GPU is
+      active — whoever runs it explicitly labels each run B70 or B65 and is
+      responsible for making sure that's actually true (physical swap, or a
+      device-selector env var when both are installed at once).
+    </li>
+  </ul>
+
+  <h2>Tooling per runtime</h2>
+  <p>
+    Each runtime is measured with its own real serving path rather than a
+    synthetic micro-benchmark, and the same tool is used across the whole
+    concurrency sweep for a given runtime — no mixing measurement methods
+    within one runtime's numbers:
+  </p>
+  <dl>
+    <dt>llama.cpp</dt>
+    <dd>
+      A real <code>llama-server</code> instance (continuous batching on,
+      <code>--metrics</code> enabled) is started per concurrency level, then
+      hit with that many concurrent completion requests. Throughput is read
+      from the server's own <code>/metrics</code> counters (before/after
+      delta across the load window) rather than timed client-side, which
+      avoids counting HTTP/network overhead as GPU work — client-side
+      wall-clock timing is used only as a fallback if metrics aren't
+      available.
+    </dd>
+    <dt>vLLM</dt>
+    <dd>
+      <code>vllm bench serve</code> against a running <code>vllm serve</code>
+      instance, at each concurrency level via <code>--max-concurrency</code>
+      — vLLM's own standard benchmarking tool, which already accounts for
+      its continuous-batching scheduler correctly.
+    </dd>
+  </dl>
+
+  <h2>Metrics</h2>
+  <dl>
+    <dt>Prompt eval tok/s</dt>
+    <dd>Prefill throughput — how fast the prompt itself is processed before generation starts. Matters most for long-context or RAG-style workloads.</dd>
+    <dt>Generation tok/s</dt>
+    <dd>Decode throughput — tokens produced per second once generation is underway. The number most people mean by "tokens per second."</dd>
+    <dt>tok/s per watt</dt>
+    <dd>Generation tok/s divided by measured GPU power draw during the run. Only reported when power was actually measured — treat a missing value as "not measured," not zero.</dd>
+    <dt>Concurrency</dt>
+    <dd>Number of parallel sessions/requests served simultaneously. 1 = single-stream latency (favors llama.cpp's design goals); higher values measure aggregate throughput under load via continuous batching (favors vLLM's design goals). Comparing runtimes at only one concurrency level tells an incomplete story.</dd>
+  </dl>
+
+  <h2>Vulkan vs SYCL</h2>
+  <p>
+    In practice this is a comparison of Intel's oneAPI/Level Zero compute
+    path (SYCL) against the generic Vulkan compute path. SYCL is often
+    ahead on raw throughput when it's stable and built correctly; Vulkan is
+    generally more portable and less finicky to get building in the first
+    place. Every result page shows driver/SDK versions and a stability
+    column (crashes, required kernel flags) alongside throughput — a fast
+    number from an unstable build isn't a fair win.
+  </p>
+
+  <h2>llama.cpp vs vLLM</h2>
+  <p>
+    These two runtimes optimize for different things: llama.cpp is tuned
+    for single/low-concurrency latency, vLLM for throughput under
+    concurrent load via continuous batching. Results are captured at both a
+    single-stream concurrency and at higher concurrency levels where
+    possible — filter the <a href="/results">results table</a> by
+    concurrency to see each runtime on its own turf rather than assuming
+    one number tells the whole story.
+  </p>
+
+  <h2>Submissions</h2>
+  <p>
+    Every result on this site — including the maintainer's own — goes
+    through the same <a href="/submit">submission form</a> and is manually
+    verified before it's published. See the submit page for the exact
+    fields captured and a copyable prompt you can hand to your own AI agent
+    to help fill them in accurately.
+  </p>
+</section>
+
+<%- include('partials/footer') %>

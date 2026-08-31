@@ -1,0 +1,52 @@
+<%- include('../partials/header') %>
+<section class="section">
+  <div class="admin-header">
+    <h1>Pending submissions (<%= pending.length %>)</h1>
+    <form method="post" action="/admin/logout"><button type="submit" class="secondary-btn">Log out</button></form>
+  </div>
+
+  <% if (pending.length === 0) { %>
+    <p class="empty-state">Nothing waiting for review.</p>
+  <% } else { %>
+    <div class="table-scroll">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Card</th>
+            <th>Backend</th>
+            <th>Runtime</th>
+            <th>Model</th>
+            <th>Gen tok/s</th>
+            <th>Submitter</th>
+            <th>Submitted</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pending.forEach(function(s) { %>
+            <tr>
+              <td><a href="/admin/submissions/<%= s.id %>">#<%= s.id %></a></td>
+              <td><%= s.card %></td>
+              <td><%= s.backend %></td>
+              <td><%= s.runtime %></td>
+              <td><%= s.model_name %></td>
+              <td class="num"><%= fmt.num(s.generation_tok_s) %></td>
+              <td><%= fmt.text(s.submitter_name) %></td>
+              <td><%= s.created_at %></td>
+              <td class="admin-actions">
+                <form method="post" action="/admin/submissions/<%= s.id %>/approve">
+                  <button type="submit" class="secondary-btn approve-btn">Approve</button>
+                </form>
+                <form method="post" action="/admin/submissions/<%= s.id %>/reject">
+                  <button type="submit" class="secondary-btn reject-btn">Reject</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+<%- include('../partials/footer') %>

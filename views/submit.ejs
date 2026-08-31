@@ -1,0 +1,147 @@
+<%
+// Values/errors can echo back raw user input (re-rendering the form after a
+// validation failure), so anything interpolated into these HTML strings
+// must be escaped — building raw HTML strings here bypasses EJS's normal
+// output auto-escaping.
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function field(name, label, opts) {
+  opts = opts || {};
+  const type = opts.type || 'text';
+  const rawValue = values[name] === undefined || values[name] === null ? '' : values[name];
+  const value = escapeHtml(rawValue);
+  const error = errors[name];
+  const required = opts.required ? 'required' : '';
+  let control;
+  if (type === 'select') {
+    control = `<select id="${name}" name="${name}" ${required}>` +
+      (opts.blank ? `<option value="">Select…</option>` : '') +
+      opts.options.map((o) => `<option value="${escapeHtml(o)}" ${rawValue === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('') +
+      `</select>`;
+  } else if (type === 'textarea') {
+    control = `<textarea id="${name}" name="${name}" rows="${opts.rows || 4}" ${required}>${value}</textarea>`;
+  } else {
+    control = `<input type="${type}" id="${name}" name="${name}" value="${value}" ${opts.step ? `step="${opts.step}"` : ''} ${opts.min !== undefined ? `min="${opts.min}"` : ''} ${required}>`;
+  }
+  return `<div class="form-row${error ? ' has-error' : ''}">` +
+    `<label for="${name}">${escapeHtml(label)}${opts.required ? ' *' : ''}</label>` +
+    control +
+    (error ? `<span class="field-error">${escapeHtml(error)}</span>` : '') +
+    `</div>`;
+}
+%>
+<%- include('partials/header') %>
+
+<section class="section">
+  <h1>Submit a result</h1>
+  <p class="section-note">
+    Every submission — including the maintainer's own — goes into a review
+    queue and is manually checked before it appears publicly. See the
+    <a href="/methodology">methodology</a> page for what's expected.
+  </p>
+</section>
+
+<section class="section agent-box">
+  <h2>Have an AI agent fill this in for you</h2>
+  <p class="section-note">
+    Copy this prompt and hand it to your own coding agent (e.g. Claude Code)
+    on the machine you ran the benchmark on. It'll gather system/software
+    versions and results, then hand you back a JSON blob — paste that below
+    to auto-fill the form.
+  </p>
+  <div class="prompt-wrap">
+    <pre id="agent-prompt" class="command-block agent-prompt"><%= agentPrompt %></pre>
+    <button type="button" id="copy-prompt-btn" class="secondary-btn">Copy prompt</button>
+  </div>
+
+  <label for="agent-json" class="paste-label">Paste from agent (JSON)</label>
+  <textarea id="agent-json" rows="6" placeholder='{"card": "B70", "backend": "Vulkan", ...}'></textarea>
+  <button type="button" id="fill-from-json-btn" class="secondary-btn">Fill form from JSON</button>
+  <p id="fill-from-json-status" class="fill-status" role="status"></p>
+</section>
+
+<section class="section">
+  <form method="post" action="/submit" id="submit-form" novalidate>
+    <div class="form-grid">
+      <fieldset>
+        <legend>About you</legend>
+        <%- field('submitter_name', 'Name / handle') %>
+        <%- field('submitter_contact', 'Contact (optional, not published)') %>
+      </fieldset>
+
+      <fieldset>
+        <legend>What you tested</legend>
+        <%- field('card', 'Card', { type: 'select', options: CARDS, blank: true, required: true }) %>
+        <%- field('backend', 'Backend', { type: 'select', options: BACKENDS, blank: true, required: true }) %>
+        <%- field('runtime', 'Runtime', { type: 'select', options: RUNTIMES, blank: true, required: true }) %>
+        <%- field('model_name', 'Model', { required: true }) %>
+        <%- field('quantization', 'Quantization', { required: true }) %>
+        <div class="field-pair">
+          <%- field('concurrency', 'Concurrency / parallel sessions', { type: 'number', min: 1, required: true }) %>
+          <%- field('context_length', 'Context length', { type: 'number', min: 1, required: true }) %>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Flags &amp; configuration</legend>
+        <div class="field-pair">
+          <%- field('flash_attention', 'Flash attention', { type: 'select', options: TRISTATE }) %>
+          <%- field('mtp', 'MTP (multi-token prediction)', { type: 'select', options: TRISTATE }) %>
+        </div>
+        <%- field('tensor_split', 'Tensor split') %>
+        <%- field('full_command', 'Full command / flags used', { type: 'textarea', rows: 3, required: true }) %>
+      </fieldset>
+
+      <fieldset>
+        <legend>System &amp; software versions</legend>
+        <%- field('os_name', 'OS') %>
+        <%- field('kernel_version', 'Kernel version') %>
+        <%- field('gpu_driver_version', 'GPU driver version') %>
+        <%- field('sdk_version', 'SDK version (oneAPI / Vulkan)') %>
+        <%- field('runtime_version', 'Runtime version (llama.cpp/vLLM build or commit)') %>
+      </fieldset>
+
+      <fieldset>
+        <legend>Power &amp; memory</legend>
+        <div class="field-pair" style="--field-pair-cols: 3;">
+          <%- field('power_limit_watts', 'Power limit (W)', { type: 'number', step: '0.1' }) %>
+          <%- field('measured_power_draw_watts', 'Measured power draw (W)', { type: 'number', step: '0.1' }) %>
+          <%- field('vram_used_mb', 'VRAM used (MB)', { type: 'number' }) %>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Results</legend>
+        <div class="field-pair">
+          <%- field('prompt_eval_tok_s', 'Prompt eval tok/s') %>
+          <%- field('generation_tok_s', 'Generation tok/s', { required: true }) %>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Stability &amp; notes</legend>
+        <div class="form-row form-row-checkbox">
+          <label for="crashed">
+            <input type="checkbox" id="crashed" name="crashed" <%= (values.crashed === '1' || values.crashed === 1 || values.crashed === 'on') ? 'checked' : '' %>>
+            Run crashed or was unstable
+          </label>
+        </div>
+        <%- field('stability_notes', 'Stability notes', { type: 'textarea', rows: 2 }) %>
+        <%- field('raw_log', 'Raw log output', { type: 'textarea', rows: 6 }) %>
+        <%- field('notes', 'Other notes', { type: 'textarea', rows: 2 }) %>
+      </fieldset>
+    </div>
+
+    <button type="submit" class="primary-btn">Submit for review</button>
+  </form>
+</section>
+
+<script src="/js/copy-prompt.js"></script>
+<script src="/js/submit-form.js"></script>
+<%- include('partials/footer') %>
