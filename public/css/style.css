@@ -44,6 +44,18 @@
   --blur-sm: 10px;
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", monospace;
+
+  /* Gradient system — soft top-to-bottom fade from the page's bluish tone
+     into a low-saturation bluer shade; borders run the inverse direction.
+     Derived with color-mix() from the theme tokens, so dark mode adapts
+     automatically (all theme overrides live on :root). */
+  --grad-bg: linear-gradient(180deg, var(--bg), color-mix(in srgb, var(--accent) 5%, var(--bg)));
+  --grad-surface: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface) 55%, var(--bg)),
+    color-mix(in srgb, var(--accent) 6%, var(--bg))
+  );
+  --grad-code: linear-gradient(180deg, var(--code-bg), color-mix(in srgb, var(--accent) 5%, var(--code-bg)));
 }
 
 @media (prefers-color-scheme: dark) {
@@ -111,7 +123,7 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--grad-bg) fixed;
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 16px;
@@ -172,7 +184,11 @@ h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
   z-index: 20;
   border-top: 2px solid var(--accent);
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg) 82%, transparent),
+    color-mix(in srgb, color-mix(in srgb, var(--accent) 6%, var(--bg)) 82%, transparent)
+  );
   backdrop-filter: blur(var(--blur-sm)) saturate(1.4);
   -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(1.4);
 }
@@ -364,13 +380,25 @@ h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
 .section h2 { margin-bottom: 0.35rem; }
 .section-note { color: var(--text-muted); margin-top: 0; font-size: 0.95rem; max-width: 70ch; }
 
-/* ---- Shared panel surface: every self-contained block shares one flat,
-       hairline-bordered look so components can't drift apart. ---- */
+/* ---- Shared panel surface: every self-contained block shares one
+       gradient-washed, hairline-bordered look so components can't drift
+       apart. The border gradient runs inverse to the surface gradient. ---- */
 .filter-form, .agent-box, .chart-wrap, .stat-card, .link-card,
 .table-scroll, .empty-state, fieldset, .feature-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  --panel-border-a: var(--border);
+  --panel-border-b: color-mix(in srgb, var(--accent) 18%, var(--border));
+  background:
+    var(--grad-surface) padding-box,
+    linear-gradient(0deg, var(--panel-border-a), var(--panel-border-b)) border-box;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
+}
+
+/* A dashed border can't carry the gradient-border layer (the fill would
+   paper over the dash gaps) — gradient surface, flat dashed hairline. */
+.empty-state {
+  background: var(--grad-surface);
+  border: 1px dashed var(--border);
 }
 
 /* ---- Tables ---- */
@@ -385,7 +413,7 @@ th, td {
   border-bottom: 1px solid var(--border);
 }
 thead th {
-  background: var(--surface);
+  background: var(--grad-surface);
   position: sticky;
   top: 0;
   font-family: var(--font-mono);
@@ -430,7 +458,7 @@ th a:hover { color: var(--accent); }
 /* ---- Code blocks ---- */
 
 .command-block, .log-block {
-  background: var(--code-bg);
+  background: var(--grad-code);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.6rem 0.8rem;
@@ -495,18 +523,19 @@ details[open] summary { margin-bottom: 0.25rem; }
   padding: 0.4rem 0.55rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: var(--bg);
+  background: var(--grad-bg);
   color: var(--text);
 }
 .filter-form button {
-  background: var(--accent);
+  --grad-angle: 180deg;
+  background: linear-gradient(var(--grad-angle), var(--accent), var(--accent-strong));
   color: var(--accent-contrast);
   border-color: var(--accent);
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: --grad-angle 1.2s ease;
 }
-.filter-form button:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+.filter-form button:hover { --grad-angle: 0deg; border-color: var(--accent-strong); }
 .reset-link { font-size: 0.85rem; }
 
 /* ---- Cards ---- */
@@ -532,7 +561,8 @@ details[open] summary { margin-bottom: 0.25rem; }
 }
 .link-card:hover {
   transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  --panel-border-a: color-mix(in srgb, var(--accent) 55%, var(--border));
+  --panel-border-b: color-mix(in srgb, var(--accent) 55%, var(--border));
   box-shadow: var(--shadow-md);
 }
 .link-card h3 { margin: 0 0 0.4rem; font-size: 1rem; }
@@ -662,7 +692,7 @@ details[open] summary { margin-bottom: 0.25rem; }
   padding: 0.5rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: var(--bg);
+  background: var(--grad-bg);
   color: var(--text);
 }
 .fill-status { font-size: 0.85rem; min-height: 1.2em; margin: 0.4rem 0 0; }
@@ -670,6 +700,15 @@ details[open] summary { margin-bottom: 0.25rem; }
 .fill-status-error { color: var(--warn-text); }
 
 /* ---- Buttons ---- */
+
+/* Registers the gradient direction as an animatable angle so button
+   gradients sweep around on hover instead of snapping. Browsers without
+   @property support flip instantly — a graceful fallback. */
+@property --grad-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 180deg;
+}
 
 .secondary-btn, .primary-btn {
   display: inline-flex;
@@ -685,30 +724,53 @@ details[open] summary { margin-bottom: 0.25rem; }
   text-decoration: none;
 }
 .secondary-btn {
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
+  --grad-angle: 180deg;
+  --btn-grad-top: color-mix(in srgb, var(--surface) 55%, var(--bg));
+  --btn-grad-bottom: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  --btn-border-blue: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
+  --btn-border-plain: var(--border-strong);
+  background:
+    linear-gradient(var(--grad-angle), var(--btn-grad-top), var(--btn-grad-bottom)) padding-box,
+    linear-gradient(var(--grad-angle), var(--btn-border-blue), var(--btn-border-plain)) border-box;
+  border: 1px solid transparent;
   color: var(--text);
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: --grad-angle 1.2s ease, color 0.12s ease;
 }
-.secondary-btn:hover { border-color: var(--accent); color: var(--accent); }
+.secondary-btn:hover {
+  --grad-angle: 0deg;
+  --btn-border-blue: var(--accent);
+  --btn-border-plain: var(--accent);
+  color: var(--accent);
+}
 .primary-btn {
-  background: var(--accent);
+  --grad-angle: 180deg;
+  --btn-grad-top: var(--accent);
+  --btn-grad-bottom: var(--accent-strong);
+  background: linear-gradient(var(--grad-angle), var(--btn-grad-top), var(--btn-grad-bottom));
   border: 1px solid var(--accent);
   color: var(--accent-contrast);
   font-size: 0.95rem;
   padding: 0.65rem 1.3rem;
-  transition: background 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
+  transition: --grad-angle 1.2s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 .primary-btn:hover {
-  background: var(--accent-strong);
+  --grad-angle: 0deg;
   border-color: var(--accent-strong);
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
-.approve-btn { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok-text) 45%, transparent); }
-.approve-btn:hover { color: var(--ok-text); border-color: var(--ok-text); }
-.reject-btn { color: var(--warn-text); border-color: color-mix(in srgb, var(--warn-text) 45%, transparent); }
-.reject-btn:hover { color: var(--warn-text); border-color: var(--warn-text); }
+.approve-btn {
+  color: var(--ok-text);
+  --btn-border-blue: color-mix(in srgb, var(--ok-text) 45%, transparent);
+  --btn-border-plain: color-mix(in srgb, var(--ok-text) 45%, transparent);
+}
+.approve-btn:hover { color: var(--ok-text); --btn-border-blue: var(--ok-text); --btn-border-plain: var(--ok-text); }
+.reject-btn {
+  color: var(--warn-text);
+  --btn-border-blue: color-mix(in srgb, var(--warn-text) 45%, transparent);
+  --btn-border-plain: color-mix(in srgb, var(--warn-text) 45%, transparent);
+}
+.reject-btn:hover { color: var(--warn-text); --btn-border-blue: var(--warn-text); --btn-border-plain: var(--warn-text); }
 
 a:focus-visible,
 button:focus-visible,
@@ -776,7 +838,7 @@ legend {
   padding: 0.5rem 0.65rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: var(--bg);
+  background: var(--grad-bg);
   color: var(--text);
   width: 100%;
   min-width: 0;
