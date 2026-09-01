@@ -8,8 +8,9 @@
 #   ./run-matrix.sh \
 #     --llamacpp-model-path /path/model.gguf --llamacpp-model-name "Name" --llamacpp-quantization "Q4_K_M" \
 #     --vllm-model /path-or-hf-id --vllm-model-name "Name" --vllm-quantization "AWQ-4bit" \
-#     [--repeats 3] [--concurrency-levels 1,2,4,8,16] [--card B70] \
-#     [--results-file results/<timestamp>.jsonl]
+#     [--resume] [--llamacpp-recipe <name>] [--vllm-recipe <name>] [--repeats 4] [--concurrency-levels 1,2,4,8,16] \
+#     [--context-lengths 8192,65536,131072] [--prefill-lengths 256,7936] \
+#     [--card B70] [--results-file results/<timestamp>.jsonl]
 #
 # --card restricts the run to cells for just one card (e.g. only B70 is
 # physically installed right now) — omit it to run every card in
@@ -28,11 +29,26 @@ usage() {
 Usage: run-matrix.sh \
   --llamacpp-model-path <gguf> --llamacpp-model-name <name> --llamacpp-quantization <quant> \
   --vllm-model <path-or-hf-id> --vllm-model-name <name> --vllm-quantization <quant> \
-  [--repeats 3] [--concurrency-levels 1,2,4,8,16] [--card B70] [--results-file <path>]
+  [--resume] [--llamacpp-recipe <name>] [--vllm-recipe <name>] [--repeats 4] [--concurrency-levels 1,2,4,8,16] \
+  [--context-lengths 8192,65536,131072] [--prefill-lengths 256,7936] \
+  [--card B70] [--results-file <path>]
 
 Runs every cell in matrix.json in turn (or only the cells for --card, if
-given). Pauses before each card switch and asks you to confirm the right
-physical GPU is active — card selection is never auto-detected.
+given), sweeping context length x concurrency x prefill length within each.
+Pauses before each card switch and asks you to confirm the right physical
+GPU is active — card selection is never auto-detected.
+
+Combinations with no room for the prefill are skipped by the per-runtime
+scripts and listed in their end-of-sweep summaries.
+
+--resume skips cells already present in --results-file, matched on card,
+backend, runtime, model, context, concurrency and prefill. Point it at the
+results file from the interrupted run and it picks up where that stopped —
+including skipping the model load for a cell that is already complete.
+
+--llamacpp-recipe / --vllm-recipe select which script in recipes/ supplies
+the launch flags. They default to the "balanced" profile for each runtime and
+backend, which is what the published numbers are measured with.
 EOF
   exit 1
 }
@@ -43,8 +59,13 @@ LLAMACPP_QUANTIZATION=""
 VLLM_MODEL=""
 VLLM_MODEL_NAME=""
 VLLM_QUANTIZATION=""
+RESUME=""
+LLAMACPP_RECIPE=""
+VLLM_RECIPE=""
 REPEATS=""
 CONCURRENCY_LEVELS=""
+CONTEXT_LENGTHS=""
+PREFILL_LENGTHS=""
 CARD_FILTER=""
 RESULTS_FILE="$SCRIPT_DIR/results/$(date +%Y%m%d-%H%M%S).jsonl"
 
@@ -56,8 +77,13 @@ while [[ $# -gt 0 ]]; do
     --vllm-model) VLLM_MODEL="$2"; shift 2 ;;
     --vllm-model-name) VLLM_MODEL_NAME="$2"; shift 2 ;;
     --vllm-quantization) VLLM_QUANTIZATION="$2"; shift 2 ;;
+    --resume) RESUME="--resume"; shift ;;
+    --llamacpp-recipe) LLAMACPP_RECIPE="$2"; shift 2 ;;
+    --vllm-recipe) VLLM_RECIPE="$2"; shift 2 ;;
     --repeats) REPEATS="$2"; shift 2 ;;
     --concurrency-levels) CONCURRENCY_LEVELS="$2"; shift 2 ;;
+    --context-lengths) CONTEXT_LENGTHS="$2"; shift 2 ;;
+    --prefill-lengths) PREFILL_LENGTHS="$2"; shift 2 ;;
     --card) CARD_FILTER="$2"; shift 2 ;;
     --results-file) RESULTS_FILE="$2"; shift 2 ;;
     -h|--help) usage ;;
@@ -68,11 +94,18 @@ done
 [[ -z "$LLAMACPP_MODEL_PATH" || -z "$LLAMACPP_MODEL_NAME" || -z "$LLAMACPP_QUANTIZATION" ]] && usage
 [[ -z "$VLLM_MODEL" || -z "$VLLM_MODEL_NAME" || -z "$VLLM_QUANTIZATION" ]] && usage
 
-read -r DEFAULT_CONCURRENCY DEFAULT_REPEATS <<< "$(node -e "
+read -r DEFAULT_CONCURRENCY DEFAULT_CONTEXTS DEFAULT_PREFILLS DEFAULT_REPEATS <<< "$(node -e "
   const m = require('$MATRIX_FILE');
-  console.log(m.concurrency_default.join(',') + ' ' + m.repeats_default);
+  console.log([
+    m.concurrency_default.join(','),
+    m.context_lengths_default.join(','),
+    m.prefill_lengths_default.join(','),
+    m.repeats_default,
+  ].join(' '));
 ")"
 CONCURRENCY_LEVELS="${CONCURRENCY_LEVELS:-$DEFAULT_CONCURRENCY}"
+CONTEXT_LENGTHS="${CONTEXT_LENGTHS:-$DEFAULT_CONTEXTS}"
+PREFILL_LENGTHS="${PREFILL_LENGTHS:-$DEFAULT_PREFILLS}"
 REPEATS="${REPEATS:-$DEFAULT_REPEATS}"
 
 echo "Caching system info..."
@@ -115,7 +148,10 @@ while IFS='|' read -r CARD BACKEND RUNTIME; do
         --backend "$BACKEND" --card "$CARD" \
         --model-path "$LLAMACPP_MODEL_PATH" --model-name "$LLAMACPP_MODEL_NAME" \
         --quantization "$LLAMACPP_QUANTIZATION" \
+        ${LLAMACPP_RECIPE:+--recipe "$LLAMACPP_RECIPE"} \
         --concurrency-levels "$CONCURRENCY_LEVELS" --repeats "$REPEATS" \
+        --ctx-sizes "$CONTEXT_LENGTHS" --prefill-lengths "$PREFILL_LENGTHS" \
+        $RESUME \
         --results-file "$RESULTS_FILE"
       ;;
     "vLLM")
@@ -123,7 +159,10 @@ while IFS='|' read -r CARD BACKEND RUNTIME; do
         --card "$CARD" \
         --model "$VLLM_MODEL" --model-name "$VLLM_MODEL_NAME" \
         --quantization "$VLLM_QUANTIZATION" \
+        ${VLLM_RECIPE:+--recipe "$VLLM_RECIPE"} \
         --concurrency-levels "$CONCURRENCY_LEVELS" --repeats "$REPEATS" \
+        --max-model-lens "$CONTEXT_LENGTHS" --prefill-lengths "$PREFILL_LENGTHS" \
+        $RESUME \
         --results-file "$RESULTS_FILE"
       ;;
     *)

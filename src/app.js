@@ -34,6 +34,15 @@ app.use((req, res, next) => {
   res.locals.currentPath = req.path;
   next();
 });
+// The footer carries a freshness stamp on every page, so the stats it needs
+// are resolved here rather than in each route. Three indexed aggregates over
+// one small table — cheap enough to run per request, and it keeps the stamp
+// honest with no cache to invalidate when an admin approves a submission.
+const { getStats } = require('./lib/queries');
+app.use((req, res, next) => {
+  res.locals.stats = getStats();
+  next();
+});
 
 app.use(
   session({
@@ -54,6 +63,8 @@ app.use(
 app.use('/', require('./routes/index'));
 app.use('/results', require('./routes/results'));
 app.use('/configs', require('./routes/configs'));
+app.use('/recipes', require('./routes/recipes'));
+app.use('/compare', require('./routes/compare'));
 app.use('/methodology', require('./routes/methodology'));
 app.use('/submit', require('./routes/submit'));
 app.use('/admin', require('./routes/admin'));

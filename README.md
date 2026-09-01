@@ -24,15 +24,6 @@ Edit `.env`:
   It prompts for a password and prints a bcrypt hash to paste into `.env`.
   The plaintext password is never written to disk.
 
-Seed some sample data to explore the site locally:
-
-```bash
-npm run seed
-```
-
-(This wipes and repopulates the `submissions` table — don't run it against
-real data.)
-
 Run the dev server (auto-restarts on file changes):
 
 ```bash
@@ -50,7 +41,12 @@ By default it listens on `http://localhost:3000` (`PORT` in `.env`).
 ## How it works
 
 - **Public pages** (`/`, `/results`, `/configs/:card/:backend/:runtime`,
-  `/methodology`) only ever show `status = 'verified'` rows.
+  `/compare`, `/recipes`, `/methodology`) only ever show
+  `status = 'verified'` rows.
+- **`/recipes`** publishes the curated launch scripts from `recipes/` — three
+  profiles (performance / balanced / context) per runtime and backend. These
+  are the same files the benchmark runner sources, so the script a reader
+  copies is the script that produced the numbers offered as evidence for it.
 - **`/submit`** takes a public submission — including a copyable prompt for
   handing off to your own AI agent to gather system/software details and
   benchmark output as JSON, which a "paste from agent" box on that page can
@@ -62,6 +58,22 @@ By default it listens on `http://localhost:3000` (`PORT` in `.env`).
 
 The admin session uses an in-memory store, so restarting the server logs
 you out — expected at this scale; re-login via `/admin/login`.
+
+## Benchmarking
+
+Running the sweep is a separate job from running the site:
+
+- **`docs/SETUP.md`** — preparing a benchmark machine: drivers, two llama.cpp
+  builds, the vLLM XPU environment, card selection, power measurement, models.
+  Each step ends with a command that proves it worked.
+- **`recipes/`** — the launch scripts. Also the site's actual recommendations,
+  published at `/recipes`.
+- **`scripts/bench/`** — the runner. See its README for the axes and how a
+  number is computed; `REMOTE_AGENT_PROMPT.md` there is a self-contained brief
+  for an agent driving the sweep on the GPU machine.
+
+A full sweep of the three benchmarked models is ~540 cells and 2,160 timed
+runs, well over a day of wall time — use `--resume`.
 
 ## Self-hosting
 
@@ -90,12 +102,16 @@ src/
   config.js              env var loading/validation
   db.js                   SQLite connection + migration runner
   schema.sql               table definitions
-  seed.js                   dev/demo sample data
   middleware/requireAdmin.js
-  routes/                    index, results, configs, methodology, submit, admin
-  lib/                        constants, queries (all SQL), validate, format, agentPrompt
+  routes/                    index, results, configs, compare, recipes,
+                             methodology, submit, admin
+  lib/                        constants, queries (all SQL), validate, format,
+                              agentPrompt, recipes
 views/                  EJS templates (views/admin/ for the admin panel)
 public/                 static CSS/JS served as-is
+recipes/                the published launch scripts — also what the runner uses
+docs/SETUP.md           preparing a benchmark machine
+scripts/bench/          the benchmark runner + the remote-agent brief
 scripts/hash-password.js  one-time admin password hash generator
 data/                   battlemage.db lives here at runtime (gitignored)
 ```

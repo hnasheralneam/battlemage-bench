@@ -21,15 +21,24 @@ const OPTIONAL_STRING_FIELDS = [
   'stability_notes',
   'raw_log',
   'notes',
+  'recipe',
+  'kv_cache_type',
 ];
 
-const REQUIRED_NUMBER_FIELDS = ['concurrency', 'context_length', 'generation_tok_s'];
+// generation_tok_s is not in here: it is required only when the run did not
+// crash. See the crashed handling in validateSubmission below.
+const REQUIRED_NUMBER_FIELDS = ['concurrency', 'context_length'];
 
 const OPTIONAL_NUMBER_FIELDS = [
+  // prompt_tokens (prefill length) is deliberately optional, not required
+  // like context_length — rows predating the prefill axis, and hand
+  // submissions that didn't control prompt length, have no value for it.
+  'prompt_tokens',
   'power_limit_watts',
   'measured_power_draw_watts',
   'vram_used_mb',
   'prompt_eval_tok_s',
+  'generation_tok_s',
 ];
 
 function trimOrNull(value) {
@@ -102,6 +111,19 @@ function validateSubmission(input) {
     input.crashed === true || input.crashed === 'true' || input.crashed === 'on' || input.crashed === 1
       ? 1
       : 0;
+
+  // A run that completed must report a real throughput figure. A run that
+  // crashed measured nothing and records null — not 0, which would publish as
+  // a legitimate-looking 0.0 tok/s result and pull down charts and the
+  // homepage best-of ranking. The DB enforces the same invariant with a CHECK.
+  if (data.crashed) {
+    data.generation_tok_s = null;
+  } else if (data.generation_tok_s === null) {
+    errors.generation_tok_s = 'Required and must be a number, unless the run crashed.';
+  } else if (data.generation_tok_s <= 0) {
+    errors.generation_tok_s =
+      'Must be greater than zero. If the run produced no tokens, mark it as crashed instead.';
+  }
 
   return { valid: Object.keys(errors).length === 0, errors, data };
 }

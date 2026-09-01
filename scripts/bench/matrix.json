@@ -1,6 +1,8 @@
 {
   "concurrency_default": [1, 2, 4, 8, 16],
-  "repeats_default": 3,
+  "context_lengths_default": [8192, 65536, 131072],
+  "prefill_lengths_default": [256, 7936],
+  "repeats_default": 4,
   "cells": [
     { "card": "B70", "backend": "Vulkan", "runtime": "llama.cpp" },
     { "card": "B70", "backend": "SYCL",   "runtime": "llama.cpp" },

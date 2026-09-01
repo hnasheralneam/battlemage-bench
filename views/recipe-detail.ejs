@@ -1,0 +1,81 @@
+<%- include('partials/header') %>
+
+<section class="section prose">
+  <p class="section-note"><a href="/recipes">← All recipes</a></p>
+  <h1><code><%= recipe.name %></code></h1>
+
+  <dl class="run-meta">
+    <dt>Runtime</dt><dd><%= recipe.runtime %></dd>
+    <dt>Backend</dt><dd><%= recipe.backend %></dd>
+    <dt>Profile</dt><dd><%= recipe.profile %></dd>
+    <dt>KV cache</dt><dd><code><%= recipe.kvCacheType %></code></dd>
+  </dl>
+
+  <h2>What it is for</h2>
+  <pre class="command-block"><%= recipe.description %></pre>
+
+  <h2>The script</h2>
+  <p class="section-note">
+    Saved as <code>recipes/<%= recipe.file %></code>. It needs
+    <code>recipes/lib/</code> alongside it, and it has one or two
+    <code>EDIT ME</code> paths to point at your own build — see
+    <a href="/methodology#setup">setup</a>.
+  </p>
+  <p>
+    <button type="button" id="copy-recipe-btn" class="copy-btn">Copy script</button>
+  </p>
+  <pre class="command-block" id="recipe-source"><%= recipe.source %></pre>
+
+  <h2>Results measured with this recipe</h2>
+  <% if (runs.length === 0) { %>
+    <p class="empty-state">
+      Nothing published from this recipe yet.
+      <a href="/results">Browse all results →</a>
+    </p>
+  <% } else { %>
+    <div class="table-scroll">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Card</th>
+            <th>Model</th>
+            <th>Quant</th>
+            <th>Concurrency</th>
+            <th>Context</th>
+            <th>Prefill</th>
+            <th>Prompt eval tok/s</th>
+            <th>Gen tok/s</th>
+            <th>Stability</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% runs.forEach(function(r) { %>
+            <tr>
+              <td><a href="/configs/<%= r.card %>/<%= r.backend %>/<%= r.runtime %>"><%= r.card %></a></td>
+              <td><%= r.model_name %></td>
+              <td><%= r.quantization %></td>
+              <td class="num"><%= r.concurrency %></td>
+              <td class="num"><%= fmt.int(r.context_length) %></td>
+              <td class="num<%= fmt.missingClass(r.prompt_tokens) %>"><%= fmt.int(r.prompt_tokens) %></td>
+              <td class="num<%= fmt.missingClass(r.prompt_eval_tok_s) %>"><%= fmt.num(r.prompt_eval_tok_s) %></td>
+              <td class="num<%= fmt.missingClass(r.generation_tok_s) %>"><%= fmt.num(r.generation_tok_s) %></td>
+              <td>
+                <% if (r.crashed) { %>
+                  <span class="badge badge-warn">crashed</span>
+                <% } else { %>
+                  <span class="badge badge-ok">stable</span>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-note">
+      <a href="/results?recipe=<%= recipe.name %>">Open these in the full results table →</a>
+    </p>
+  <% } %>
+</section>
+
+<script src="/js/copy-recipe.js"></script>
+<%- include('partials/footer') %>

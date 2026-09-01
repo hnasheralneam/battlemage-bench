@@ -9,7 +9,10 @@ router.get('/', (req, res) => {
     backend: req.query.backend || '',
     runtime: req.query.runtime || '',
     quant: req.query.quant || '',
+    q: req.query.q || '',
     concurrency: req.query.concurrency || '',
+    prefill: req.query.prefill || '',
+    recipe: req.query.recipe || '',
     sort: req.query.sort || 'created_at',
     dir: req.query.dir || 'desc',
   };

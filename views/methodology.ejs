@@ -9,23 +9,28 @@
     vLLM are not measuring quite the same thing, and the raw flags attached
     to every result exist so you can judge that for yourself.
   </p>
+  <p class="section-note">
+    Arrived with a specific problem? Skip to
+    <a href="#faq">the questions this page answers</a>.
+  </p>
 
-  <h2>The test matrix</h2>
+  <h2 id="matrix">The test matrix</h2>
   <p>
     vLLM has no Vulkan backend on Intel GPUs (SYCL/XPU only), so the real
     matrix is three runtime×backend combinations, not a full 2×2 — each run
-    across both cards and a concurrency sweep from single-stream up through
-    fairly saturated batching:
+    across both cards and three crossed axes: a concurrency sweep from
+    single-stream up through fairly saturated batching, a context-length
+    sweep, and a prefill-length sweep:
   </p>
   <div class="table-scroll">
     <table>
       <thead>
-        <tr><th>Runtime</th><th>Backend</th><th>Cards</th><th>Concurrency levels</th></tr>
+        <tr><th>Runtime</th><th>Backend</th><th>Cards</th><th>Concurrency</th><th>Context</th><th>Prefill</th></tr>
       </thead>
       <tbody>
-        <tr><td>llama.cpp</td><td>Vulkan</td><td>B70, B65</td><td>1, 2, 4, 8, 16</td></tr>
-        <tr><td>llama.cpp</td><td>SYCL</td><td>B70, B65</td><td>1, 2, 4, 8, 16</td></tr>
-        <tr><td>vLLM</td><td>SYCL</td><td>B70, B65</td><td>1, 2, 4, 8, 16</td></tr>
+        <tr><td>llama.cpp</td><td>Vulkan</td><td>B70, B65</td><td>1, 2, 4, 8, 16</td><td>8K, 64K, 128K</td><td>256, 7936</td></tr>
+        <tr><td>llama.cpp</td><td>SYCL</td><td>B70, B65</td><td>1, 2, 4, 8, 16</td><td>8K, 64K, 128K</td><td>256, 7936</td></tr>
+        <tr><td>vLLM</td><td>SYCL</td><td>B70, B65</td><td>1, 2, 4, 8, 16</td><td>8K, 64K, 128K</td><td>256, 7936</td></tr>
       </tbody>
     </table>
   </div>
@@ -34,8 +39,98 @@
     session case — the same sweep answers both questions rather than treating
     "single vs. parallel" as a separate axis.
   </p>
+  <p>
+    <strong>Context</strong> is the server's KV budget
+    (<code>--ctx-size</code> / <code>--max-model-len</code>);
+    <strong>prefill</strong> is how many prompt tokens each request actually
+    sends. They're separate axes because they stress different things — a
+    large context costs VRAM whether or not it gets filled, while a long
+    prefill is what actually loads the prefill path and moves
+    <em>prompt eval tok/s</em>. The short prefill (256 tokens) is a chat-shaped
+    request; the long one (7936) is a document-shaped one. It is 7936 rather
+    than a round 8192 so that it still fits alongside the 256 tokens it
+    generates at the 8K context level — a round number there would silently
+    drop that whole row.
+  </p>
+  <p>
+    A cell runs only when there's room for the prefill plus the 256 tokens it
+    generates — <code>context ≥ prefill + 256</code>, on both runtimes.
+    Concurrency doesn't enter that test on either side: vLLM's
+    <code>--max-model-len</code> is a per-request ceiling, and the llama.cpp
+    runs use a unified KV cache, so the context budget is shared rather than
+    carved into per-slot shares. With the levels above, every combination
+    fits.
+  </p>
+  <p>
+    Where a non-default sweep does produce an unrunnable combination, it is
+    <strong>skipped rather than truncated</strong> — a request whose prompt
+    doesn't fit would silently measure something else — and listed in the
+    run's summary. A missing row in the results table means "not runnable,"
+    not "failed."
+  </p>
 
-  <h2>What's held constant</h2>
+  <h2 id="models">Models benchmarked</h2>
+  <p>
+    Three models, each run across the whole matrix. They are chosen so that
+    the two things that most move throughput on a 32 GB card vary one at a
+    time — dense against mixture-of-experts, and one vendor's architecture
+    against another's. All three fit on a single card at 4-bit, which is the
+    point of the card.
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Architecture</th><th>llama.cpp</th><th>vLLM</th><th>Why it's here</th></tr>
+      </thead>
+      <tbody>
+        <% MODELS.forEach(function(m) { %>
+          <tr>
+            <td><%= m.name %></td>
+            <td><%= m.architecture %></td>
+            <td><%= m.llamacppQuant %></td>
+            <td><%= m.vllmQuant %></td>
+            <td><%= m.note %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    Results on other models are welcome and publishable — the
+    <a href="/submit">submission form</a> takes any model name. These three
+    are simply what this site's own sweeps run, so they are the ones with
+    complete coverage across every card, backend and runtime.
+  </p>
+
+  <h2 id="recipes">Recipes</h2>
+  <p>
+    Every flag that isn't one of the three swept axes comes from a named
+    <a href="/recipes">recipe</a> — a small, hand-picked set of launch
+    scripts, three profiles per runtime and backend. The benchmark runner
+    sources those same files rather than carrying its own tuned command, and
+    each result records which recipe produced it.
+  </p>
+  <p>
+    That arrangement is deliberate: it means the script a reader copies is the
+    script that was measured, and a recipe can't quietly drift away from the
+    numbers offered as evidence for it. The only things the runner overrides
+    are the swept axes, the port and model, greedy decoding (so run-to-run
+    variance comes from the hardware rather than the sampler), and
+    <code>--metrics</code>.
+  </p>
+
+  <h2 id="setup">Reproducing this</h2>
+  <p>
+    The full setup — drivers, both llama.cpp builds, the vLLM XPU
+    environment, which card is active, and how power is measured — is written
+    up in <code>docs/SETUP.md</code> in the repository, with a command that
+    proves each step. The benchmark tooling itself lives in
+    <code>scripts/bench/</code>, and <code>REMOTE_AGENT_PROMPT.md</code> there
+    is a self-contained brief you can hand to an agent running on the
+    benchmark machine.
+  </p>
+
+  <h2 id="held-constant">What's held constant</h2>
   <ul>
     <li>
       <strong>Model/quant is not forced to match across runtimes.</strong>
@@ -48,22 +143,36 @@
       result's flags (every row has them) before comparing across runtimes.
     </li>
     <li>
-      <strong>Repeats.</strong> Each cell in the matrix is run 3 times; the
-      first run is discarded as a warmup (JIT/cache effects) and the
-      published number is the median of the remaining runs. All raw
-      per-repeat output is kept in each result's raw log, not just the
-      median.
+      <strong>Repeats.</strong> Each cell in the matrix is run 4 times; the
+      first is discarded as a warmup (JIT/cache effects) and the published
+      number is the median of the remaining three. All raw per-repeat output
+      is kept in each result's raw log, not just the median. Four rather than
+      three, because with three the "median" of the two scored runs is just
+      their mean — it rejects no outliers while still being called a median.
     </li>
     <li>
-      <strong>Context size is a total budget, not a per-session one.</strong>
-      llama.cpp's <code>--ctx-size</code> is the total KV-cache budget
-      across all parallel slots, split evenly — so at a fixed context size,
-      each session's effective context shrinks as concurrency goes up (e.g.
-      a 16-way run gets 1/16th the context of a single-stream run at the
-      same setting). This is intentional — it mirrors a real memory-
-      constrained serving setup — but it means "context length" in the
-      results table is the ceiling per session at that concurrency level,
-      not a fixed constant across a whole sweep.
+      <strong>Context is a shared budget, not a per-slot share.</strong>
+      The llama.cpp runs use a unified KV cache
+      (<code>-kvu</code>), so <code>--ctx-size</code> is one pool the
+      parallel slots draw from as they need it, rather than a total divided
+      evenly among them. Adding concurrency therefore doesn't shrink each
+      session's context ceiling, and "context length" in the results table
+      means the same thing at every concurrency level. vLLM's
+      <code>--max-model-len</code> is a per-request ceiling, which behaves
+      the same way for this purpose — though the two flags reach it
+      differently, so it is still not a like-for-like number across runtimes.
+    </li>
+    <li>
+      <strong>Throughput is aggregate, and measured the same way on both
+      runtimes.</strong> <em>Generation tok/s</em> is total output tokens per
+      second of wall time across all parallel sessions — the number that
+      should climb as concurrency rises. It is not the rate a single session
+      sees, which falls. Getting this consistent took some care: llama-server
+      also exposes counters whose ratio is a mean <em>per-slot</em> rate, and
+      vLLM exposes an "input throughput" that is really input tokens per
+      second of benchmark. Neither is used. The per-slot rate is kept
+      alongside, in each row's raw log, because it is a useful number in its
+      own right — just not the same one.
     </li>
     <li>
       <strong>Card selection is operator-confirmed, not auto-detected.</strong>
@@ -74,7 +183,7 @@
     </li>
   </ul>
 
-  <h2>Tooling per runtime</h2>
+  <h2 id="tooling">Tooling per runtime</h2>
   <p>
     Each runtime is measured with its own real serving path rather than a
     synthetic micro-benchmark, and the same tool is used across the whole
@@ -85,36 +194,58 @@
     <dt>llama.cpp</dt>
     <dd>
       A real <code>llama-server</code> instance (continuous batching on,
-      <code>--metrics</code> enabled) is started per concurrency level, then
-      hit with that many concurrent completion requests. Throughput is read
-      from the server's own <code>/metrics</code> counters (before/after
-      delta across the load window) rather than timed client-side, which
-      avoids counting HTTP/network overhead as GPU work — client-side
-      wall-clock timing is used only as a fallback if metrics aren't
-      available.
+      <code>--metrics</code> enabled) is started per context length ×
+      concurrency level (both are launch-time flags), then hit with that many
+      concurrent completion requests at each prefill length in turn. Prompts
+      are synthetic filler calibrated to the target prefill length against the
+      server's own <code>/tokenize</code> endpoint, and the pool is sized to
+      at least twice the concurrency level with each worker starting at its
+      own offset — so no two requests in flight at once share a prompt, and
+      prefix caching can't quietly serve most of a concurrent batch from
+      cache. Token counts come from the server's own <code>/metrics</code>
+      counters rather than from the client, which avoids counting HTTP
+      overhead as GPU work; they are divided by the client's wall-clock window
+      to give aggregate throughput. Client-side counting is used only as a
+      fallback if the metrics names aren't found, and it measures the same
+      quantity, so a fallback row stays comparable.
     </dd>
     <dt>vLLM</dt>
     <dd>
       <code>vllm bench serve</code> against a running <code>vllm serve</code>
       instance, at each concurrency level via <code>--max-concurrency</code>
-      — vLLM's own standard benchmarking tool, which already accounts for
-      its continuous-batching scheduler correctly.
+      and each prefill length via <code>--dataset-name random
+      --random-input-len</code> (rather than a natural-text dataset, whose
+      prompt lengths aren't controllable — the cost is that prompt content is
+      synthetic, the benefit is that prefill length is directly comparable to
+      the llama.cpp side) — vLLM's own standard benchmarking tool, which
+      already accounts for its continuous-batching scheduler correctly.
+      Generation throughput is its <code>output_throughput</code>, which is
+      already aggregate. Prefill throughput is derived from mean time-to-first
+      -token rather than from its <code>input_throughput</code> field, which
+      measures input tokens per second of benchmark and so falls as output
+      length rises. Under concurrency, TTFT includes queue wait ahead of
+      prefill, so the figure understates prefill speed slightly — exact at
+      concurrency 1, conservative above it.
     </dd>
   </dl>
 
-  <h2>Metrics</h2>
+  <h2 id="metrics">Metrics</h2>
   <dl>
     <dt>Prompt eval tok/s</dt>
-    <dd>Prefill throughput — how fast the prompt itself is processed before generation starts. Matters most for long-context or RAG-style workloads.</dd>
+    <dd>Prefill throughput — how fast the prompt itself is processed before generation starts, per second of <em>prefill</em> time rather than per second of benchmark. Matters most for long-prefill workloads (document summarization, RAG), which is what the 8192-token prefill level is there to measure; read it alongside the prefill column rather than on its own.</dd>
     <dt>Generation tok/s</dt>
-    <dd>Decode throughput — tokens produced per second once generation is underway. The number most people mean by "tokens per second."</dd>
+    <dd>Decode throughput — tokens produced per second once generation is underway. The number most people mean by "tokens per second." Reported as an <strong>aggregate</strong>: the total across every parallel session, not the rate one session sees. It should rise with concurrency while per-session speed falls; the per-session figure is kept in each row's raw log.</dd>
     <dt>tok/s per watt</dt>
-    <dd>Generation tok/s divided by measured GPU power draw during the run. Only reported when power was actually measured — treat a missing value as "not measured," not zero.</dd>
+    <dd>Generation tok/s divided by measured GPU power draw during the run. Only reported when power was actually measured — treat a missing value as "not measured," not zero. This site's own figures are the mean board draw over the load window, with no idle baseline subtracted; a submitted figure measured some other way is still useful, but read its notes before comparing it to one of ours.</dd>
+    <dt>Context length</dt>
+    <dd>The KV-cache budget the server was started with, not the number of tokens actually used. Higher costs VRAM up front and generally lowers generation throughput. It is a shared budget rather than a per-slot share, so it means the same thing at every concurrency level — see <a href="#held-constant">what's held constant</a>.</dd>
+    <dt>Prefill</dt>
+    <dd>Prompt tokens sent per request. Blank on runs submitted before this axis existed, or where the submitter didn't control prompt length — treat it as "unknown," not zero.</dd>
     <dt>Concurrency</dt>
     <dd>Number of parallel sessions/requests served simultaneously. 1 = single-stream latency (favors llama.cpp's design goals); higher values measure aggregate throughput under load via continuous batching (favors vLLM's design goals). Comparing runtimes at only one concurrency level tells an incomplete story.</dd>
   </dl>
 
-  <h2>Vulkan vs SYCL</h2>
+  <h2 id="vulkan-vs-sycl">Vulkan vs SYCL</h2>
   <p>
     In practice this is a comparison of Intel's oneAPI/Level Zero compute
     path (SYCL) against the generic Vulkan compute path. SYCL is often
@@ -125,7 +256,7 @@
     number from an unstable build isn't a fair win.
   </p>
 
-  <h2>llama.cpp vs vLLM</h2>
+  <h2 id="runtimes">llama.cpp vs vLLM</h2>
   <p>
     These two runtimes optimize for different things: llama.cpp is tuned
     for single/low-concurrency latency, vLLM for throughput under
@@ -136,7 +267,7 @@
     one number tells the whole story.
   </p>
 
-  <h2>Submissions</h2>
+  <h2 id="submissions">Submissions</h2>
   <p>
     Every result on this site — including the maintainer's own — goes
     through the same <a href="/submit">submission form</a> and is manually
@@ -144,6 +275,116 @@
     fields captured and a copyable prompt you can hand to your own AI agent
     to help fill them in accurately.
   </p>
+
+  <h2 id="faq">Questions this page answers</h2>
+  <p>
+    Phrased the way people actually hit them. Each answer points at the
+    section or the filtered results behind it.
+  </p>
+  <div class="faq-list">
+    <details class="faq-item">
+      <summary>"Should I build with Vulkan or SYCL?"</summary>
+      <p>
+        There isn't one answer, which is why both are benchmarked here
+        rather than one being declared the winner. SYCL is often ahead on
+        raw throughput when it builds cleanly and stays stable; Vulkan is
+        usually the less finicky path to a working setup. Compare them on
+        your own model and concurrency:
+        <a href="/results?backend=SYCL">SYCL results</a> ·
+        <a href="/results?backend=Vulkan">Vulkan results</a>, and read
+        <a href="#vulkan-vs-sycl">Vulkan vs SYCL</a> for what the comparison
+        does and doesn't establish.
+      </p>
+    </details>
+
+    <details class="faq-item">
+      <summary>"My SYCL build is slower than Vulkan on the same card."</summary>
+      <p>
+        Both backends are sensitive to what's underneath them, so the first
+        thing to check is the stack, not the runtime. Every row on the
+        <a href="/results">results table</a> expands to show the exact
+        kernel, GPU driver, oneAPI/Vulkan SDK and runtime version behind the
+        number — find a row that beats yours on the same card and backend
+        and compare versions against it. If your setup is genuinely slower
+        on a newer stack, that's worth
+        <a href="/submit">submitting</a>: a slow result with full versions
+        attached is data, not noise.
+      </p>
+    </details>
+
+    <details class="faq-item">
+      <summary>"Why did my tok/s drop when I raised concurrency?"</summary>
+      <p>
+        Check which number you're looking at first. Per-session throughput is
+        expected to fall as concurrency rises; aggregate throughput is the
+        number that should climb, and aggregate is what this site publishes.
+        If your own figure comes from llama-server's
+        <code>tokens_predicted_total / tokens_predicted_seconds_total</code>,
+        that ratio is a mean per-slot rate — roughly flat across a concurrency
+        sweep — not aggregate throughput, and it isn't comparable to the
+        numbers here. See
+        <a href="#held-constant">throughput is aggregate</a>.
+      </p>
+      <p>
+        What won't explain it: per-slot context shrinking. The runs here use a
+        unified KV cache, so adding parallel slots doesn't divide the context
+        budget between them.
+      </p>
+    </details>
+
+    <details class="faq-item">
+      <summary>"Can I compare a llama.cpp number against a vLLM one?"</summary>
+      <p>
+        Not directly, and this site doesn't pretend otherwise. The two
+        runtimes load different artifacts entirely — GGUF quants like
+        Q4_K_M versus AWQ/GPTQ/FP8 — so a cross-runtime gap mixes the
+        runtime, the quantization and the model file together. What is
+        comparable is a runtime against itself across cards, backends and
+        concurrency levels. See
+        <a href="#held-constant">what's held constant</a> and
+        <a href="#runtimes">llama.cpp vs vLLM</a>.
+      </p>
+    </details>
+
+    <details class="faq-item">
+      <summary>"Is the B65 worth it over the B70?"</summary>
+      <p>
+        Not enough B65 data has been published here to answer that
+        honestly yet — check
+        <a href="/results?card=B65">what exists so far</a> before treating
+        any B65 figure as representative. Benchmarking on a B65 is the
+        single most useful thing anyone can
+        <a href="/submit">contribute</a> right now.
+      </p>
+    </details>
+
+    <details class="faq-item">
+      <summary>"Can I trust a number on this page?"</summary>
+      <p>
+        Judge it from what's attached to it rather than taking it on faith.
+        Every row publishes the exact command that produced it, the card,
+        backend, runtime and their versions, the quantization, context and
+        concurrency, whether the run crashed, and the raw per-repeat log
+        where one was supplied. Published figures are the median of repeated
+        runs with a warmup discarded (<a href="#held-constant">repeats</a>),
+        and results with power measured also carry tok/s per watt. A number
+        missing its conditions is one you should discount — including here.
+      </p>
+    </details>
+
+    <details class="faq-item">
+      <summary>"A result here doesn't match what I measure."</summary>
+      <p>
+        Likely and worth reporting. Card labels are operator-asserted rather
+        than auto-detected (<a href="#held-constant">card selection</a>), the
+        stack moves quickly enough that a months-old row may simply be
+        stale, and prompt length and context both shift the numbers. Send
+        what you measured through the <a href="/submit">submission form</a>
+        with your versions attached — a contradicting result with full
+        conditions is more useful than a correction with none.
+      </p>
+    </details>
+  </div>
 </section>
 
 <%- include('partials/footer') %>

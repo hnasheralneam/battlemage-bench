@@ -395,7 +395,8 @@ h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
        gradient-washed, hairline-bordered look so components can't drift
        apart. The border gradient runs inverse to the surface gradient. ---- */
 .filter-form, .agent-box, .chart-wrap, .stat-card, .link-card,
-.table-scroll, .empty-state, fieldset, .feature-card {
+.table-scroll, .empty-state, fieldset, .feature-card,
+.path-card, .form-step, .glossary, .faq-item {
   --panel-border-a: var(--border);
   --panel-border-b: color-mix(in srgb, var(--accent) 18%, var(--border));
   background:
@@ -450,6 +451,39 @@ tbody tr:hover {
 th a { color: inherit; text-decoration: none; }
 th a:hover { color: var(--accent); }
 
+/* Screen-reader-only label, for a column whose header is an icon. */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ---- Compare: paired backend results ---- */
+
+/* The faster side of a pair, marked on the number itself so the comparison
+   reads without having to hop to the delta column. */
+.pair-winner { color: var(--accent); font-weight: 600; }
+.delta { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.delta-up { color: var(--ok-text); }
+.delta-down { color: var(--warn-text); }
+
+/* ---- Copy-as-Markdown button ---- */
+
+.copy-row-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.28rem 0.4rem;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.copy-row-btn:hover { color: var(--accent); border-color: var(--border); }
+
 /* ---- Badges ---- */
 
 .badge {
@@ -488,7 +522,7 @@ th a:hover { color: var(--accent); }
 .run-meta dd { margin: 0; }
 .run-notes { font-size: 0.85rem; color: var(--text-muted); white-space: normal; }
 
-details summary {
+details:not(.form-step) summary {
   cursor: pointer;
   color: var(--accent);
   font-family: var(--font-mono);
@@ -496,8 +530,73 @@ details summary {
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
-details summary::marker { color: var(--accent); }
-details[open] summary { margin-bottom: 0.25rem; }
+details:not(.form-step) summary::marker { color: var(--accent); }
+details:not(.form-step)[open] summary { margin-bottom: 0.25rem; }
+
+/* ---- Absent values ----
+   A measurement that was never taken is written out rather than left blank
+   or dashed. Muted and set in the prose face so it never reads as data, and
+   never right-aligned into the numeric column's rhythm. ---- */
+
+.not-measured,
+td.num.not-measured,
+.run-meta dd.not-measured {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-variant-numeric: normal;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+td.num.not-measured { text-align: right; }
+
+/* ---- Glossary: the reading key under each table ---- */
+
+.glossary { margin: 1.25rem 0 0; padding: 1rem 1.1rem; }
+.glossary > summary {
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.glossary-intro {
+  margin: 0.75rem 0 1rem;
+  max-width: 70ch;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+.glossary-intro strong { color: var(--text); font-weight: 600; }
+.glossary-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.15rem 1.5rem;
+  margin: 0;
+}
+@media (min-width: 800px) {
+  .glossary-list { grid-template-columns: minmax(9rem, max-content) 1fr; }
+  .glossary-list dt { grid-column: 1; }
+  .glossary-list dd { grid-column: 2; }
+}
+.glossary-list dt {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding-top: 0.3em;
+}
+.glossary-list dd {
+  margin: 0 0 0.85rem;
+  max-width: 70ch;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+/* Anchor targets for the <th aria-describedby> links — a jump from a column
+   heading should land the definition clear of the sticky site header. */
+.glossary-list dd[id] { scroll-margin-top: 6rem; }
+
+/* A described column heading is discoverable rather than silently hoverable. */
+th[aria-describedby] { text-decoration: underline dotted var(--border-strong); text-underline-offset: 3px; }
+th[aria-describedby]:hover { text-decoration-color: var(--accent); }
 
 /* ---- Filter form ---- */
 
@@ -522,6 +621,7 @@ details[open] summary { margin-bottom: 0.25rem; }
   min-width: 8rem;
 }
 .filter-form label:has(input[type="number"]) { min-width: 6rem; }
+.filter-form label.filter-search { min-width: 12rem; flex: 1 1 12rem; }
 .filter-form .filter-actions {
   display: flex;
   align-items: center;
@@ -628,6 +728,26 @@ details[open] summary { margin-bottom: 0.25rem; }
 .prose li { margin-bottom: 0.5rem; }
 .todo-note { color: var(--text-muted); font-style: italic; border-left: 3px solid var(--border); padding-left: 0.75rem; }
 
+/* ---- FAQ: questions phrased as the reader's problem ---- */
+
+.faq-list { display: grid; gap: 0.6rem; margin: 1.25rem 0 0; }
+.faq-item { padding: 0.9rem 1.1rem; }
+/* The question is the heading here, so it drops the small mono accent-link
+   treatment that summaries elsewhere on the site carry. */
+.prose .faq-item > summary {
+  font-family: var(--font-sans);
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0;
+  white-space: normal;
+}
+.prose .faq-item > summary:hover { color: var(--accent); }
+.faq-item > p { margin: 0.7rem 0 0; font-size: 0.92rem; }
+
+/* Anchored answers land clear of the sticky site header. */
+.prose h2[id] { scroll-margin-top: 6rem; }
+
 /* ---- Flash messages ---- */
 
 .flash {
@@ -709,6 +829,8 @@ details[open] summary { margin-bottom: 0.25rem; }
   letter-spacing: 0.04em;
   color: var(--text-muted);
 }
+.footer-bottom p + p { padding-top: 0; }
+.footer-freshness { text-transform: none; letter-spacing: 0.02em; }
 .grayscale-icon { filter: grayscale(100%); }
 
 /* ---- Agent box ---- */
@@ -890,6 +1012,158 @@ legend {
 }
 .form-row.has-error input, .form-row.has-error select, .form-row.has-error textarea { border-color: var(--warn-text); }
 .field-error { color: var(--warn-text); font-size: 0.78rem; }
+/* Guidance under a field, for the ones whose correct value isn't obvious from
+   the label alone — what "aggregate" means for throughput, or where to read a
+   KV cache setting off. Muted so it reads as help, not as an error. */
+.field-hint { color: var(--text-muted); font-size: 0.78rem; line-height: 1.45; }
+
+/* ---- Submit page: path chooser ---- */
+
+/* Two ways in — agent-assisted or by hand. Buttons rather than links so they
+   are keyboard-operable and can carry aria-pressed; visually they borrow the
+   .link-card idiom so the page reads as one system. */
+.path-choice {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+@media (min-width: 800px) {
+  .path-choice { grid-template-columns: 1fr 1fr; }
+}
+.path-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  padding: var(--space-5);
+  padding-bottom: 3.25rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.path-card h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+.path-card p { margin: 0; color: var(--text-muted); font-size: 0.88rem; line-height: 1.6; }
+.path-card:hover {
+  transform: translateY(-2px);
+  --panel-border-a: color-mix(in srgb, var(--accent) 55%, var(--border));
+  --panel-border-b: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: var(--shadow-md);
+}
+.path-card:hover .link-card-arrow { color: var(--accent); transform: translateX(3px); }
+.path-card.is-active {
+  --panel-border-a: var(--accent);
+  --panel-border-b: var(--accent);
+}
+.path-card.is-active .link-card-arrow { color: var(--accent); }
+
+/* ---- Submit page: collapsible form steps ---- */
+
+/* Native <details> so keyboard and screen-reader behaviour comes for free and
+   the form still works with JS off (every step renders open; the stepper
+   script collapses all but the first). Closed steps still submit their
+   inputs, so nothing is lost while a section is folded away. */
+.form-steps { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* The whole submit flow is one centred column, so switching between the two
+   routes never reflows the page and both panels line up edge to edge. 44rem
+   matches the 40rem .form-row cap plus panel padding — wider and the fields
+   strand in a half-empty panel. */
+.submit-col {
+  max-width: 44rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+/* --sticky-header-h is measured by submit-form.js: the nav wraps to two or
+   three rows on narrow screens, so a fixed offset would leave scrolled-to
+   headings tucked under it. 5rem is the no-JS fallback. */
+.form-step {
+  overflow: hidden;
+  scroll-margin-top: calc(var(--sticky-header-h, 4rem) + 1rem);
+}
+.path-choice, #agent-path, #manual-path {
+  scroll-margin-top: calc(var(--sticky-header-h, 4rem) + 1rem);
+}
+
+.form-step-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.9rem 1.35rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.form-step-summary::-webkit-details-marker { display: none; }
+.form-step-summary:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.form-step-index {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+}
+.form-step-title { font-weight: 600; font-size: 0.95rem; }
+.form-step-tag {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 0.1rem 0.4rem;
+}
+.form-step-tag.is-required {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+/* Ticked by the stepper once a section has been completed or agent-filled. */
+.form-step-check {
+  margin-left: auto;
+  color: var(--ok-text);
+  font-size: 0.9rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.form-step[data-complete] .form-step-check { opacity: 1; }
+/* Chevron trails the tick; the tick holds its slot via opacity so this
+   never shifts as steps get marked complete. */
+.form-step-summary::after {
+  content: "";
+  margin-left: 0.2rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
+  transform: rotate(45deg) translate(-0.1em, -0.1em);
+  transition: transform 0.18s ease;
+}
+.form-step[open] > .form-step-summary::after { transform: rotate(-135deg) translate(-0.1em, -0.1em); }
+.form-step[open] > .form-step-summary { border-bottom: 1px solid var(--border); }
+
+.form-step-body { padding: 1.15rem 1.35rem 1.25rem; }
+.form-step-body .form-row:last-of-type { margin-bottom: 0; }
+.form-step-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+.form-step-actions .secondary-btn, .form-step-actions .primary-btn { margin-top: 0; }
+
+/* Prompt disclosure inside the agent panel. */
+.prompt-disclosure { margin-bottom: 0.4rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .path-card, .form-step-summary::after, .form-step-check { transition: none; }
+  .path-card:hover { transform: none; }
+}
 
 /* ---- Charts ---- */
 

@@ -3,6 +3,7 @@ function isActive(href) {
   const path = typeof currentPath !== 'undefined' ? currentPath : '';
   if (href === '/') return path === '/';
   if (href === '/results') return path === '/results' || path.startsWith('/configs/');
+  if (href === '/recipes') return path === '/recipes' || path.startsWith('/recipes/');
   return path === href;
 }
 %>
@@ -12,6 +13,8 @@ function isActive(href) {
     <nav class="site-nav">
       <a href="/" class="<%= isActive('/') ? 'active' : '' %>">Home</a>
       <a href="/results" class="<%= isActive('/results') ? 'active' : '' %>">Results</a>
+      <a href="/compare" class="<%= isActive('/compare') ? 'active' : '' %>">Compare</a>
+      <a href="/recipes" class="<%= isActive('/recipes') ? 'active' : '' %>">Recipes</a>
       <a href="/methodology" class="<%= isActive('/methodology') ? 'active' : '' %>">Methodology</a>
       <a href="/submit" class="<%= isActive('/submit') ? 'active' : '' %>">Submit a result</a>
     </nav>

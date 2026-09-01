@@ -1,0 +1,162 @@
+<%- include('partials/header') %>
+
+<div class="hero">
+  <h1>Vulkan vs SYCL</h1>
+  <p class="lede">
+    The same workload run on both backends, paired and set side by side. A pair
+    only forms when the card, runtime, model, quantization, concurrency,
+    context and prefill all match — so the difference in the table is the
+    backend, not the setup.
+  </p>
+</div>
+
+<section class="section">
+  <h2>Matched pairs</h2>
+
+  <% if (pairs.length === 0) { %>
+    <p class="empty-state">
+      No matched pairs yet. A pair needs the <em>same</em> workload measured on
+      both Vulkan and SYCL — same card, runtime, model, quantization,
+      concurrency, context and prefill. Runs that exist on only one backend
+      stay on the <a href="/results">results table</a> rather than being
+      compared against something they don't match.
+      <a href="/submit">Submit the missing side →</a>
+    </p>
+  <% } else { %>
+    <p class="section-note">
+      <% if (summary.syclWins > summary.vulkanWins) { %>
+        SYCL is faster in <%= summary.syclWins %> of <%= summary.total %> matched pair<%= summary.total === 1 ? '' : 's' %>.
+      <% } else if (summary.vulkanWins > summary.syclWins) { %>
+        Vulkan is faster in <%= summary.vulkanWins %> of <%= summary.total %> matched pair<%= summary.total === 1 ? '' : 's' %>.
+      <% } else { %>
+        Evenly split across <%= summary.total %> matched pair<%= summary.total === 1 ? '' : 's' %>.
+      <% } %>
+      <% if (summary.medianDeltaPct !== null) { %>
+        Median difference in generation throughput:
+        <strong><%= fmt.num(Math.abs(summary.medianDeltaPct)) %>%</strong>
+        in <%= summary.medianDeltaPct >= 0 ? "SYCL's" : "Vulkan's" %> favour.
+      <% } %>
+      With this few results, read it as a direction rather than a verdict.
+    </p>
+
+    <div class="table-scroll">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Card</th>
+            <th>Runtime</th>
+            <th>Model</th>
+            <th aria-describedby="gloss-quant" title="How tightly the weights are compressed.">Quant</th>
+            <th aria-describedby="gloss-concurrency" title="Parallel sessions served at once.">Conc.</th>
+            <th aria-describedby="gloss-context" title="KV-cache budget for the run — a total across parallel slots.">Context</th>
+            <th aria-describedby="gloss-prefill" title="Prompt tokens per request.">Prefill</th>
+            <th class="num" aria-describedby="gloss-gen" title="Decode throughput on the Vulkan backend.">Vulkan gen</th>
+            <th class="num" aria-describedby="gloss-gen" title="Decode throughput on the SYCL backend.">SYCL gen</th>
+            <th class="num" title="How far ahead SYCL is on generation throughput. Negative means Vulkan won.">Δ gen</th>
+            <th class="num" aria-describedby="gloss-prompt-eval" title="Prefill throughput on the Vulkan backend.">Vulkan prompt eval</th>
+            <th class="num" aria-describedby="gloss-prompt-eval" title="Prefill throughput on the SYCL backend.">SYCL prompt eval</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pairs.forEach(function(p) { %>
+            <tr>
+              <td><%= p.card %></td>
+              <td><%= p.runtime %></td>
+              <td><%= p.model_name %></td>
+              <td><%= p.quantization %></td>
+              <td class="num"><%= p.concurrency %></td>
+              <td class="num"><%= fmt.int(p.context_length) %></td>
+              <td class="num<%= fmt.missingClass(p.prompt_tokens) %>"><%= fmt.int(p.prompt_tokens) %></td>
+              <td class="num<%= p.vulkan_gen >= p.sycl_gen ? ' pair-winner' : '' %>"><%= fmt.num(p.vulkan_gen) %></td>
+              <td class="num<%= p.sycl_gen > p.vulkan_gen ? ' pair-winner' : '' %>"><%= fmt.num(p.sycl_gen) %></td>
+              <td class="num">
+                <% if (p.deltaPct === null) { %>
+                  <span class="not-measured">not measured</span>
+                <% } else { %>
+                  <span class="delta <%= p.deltaPct >= 0 ? 'delta-up' : 'delta-down' %>">
+                    <%= (p.deltaPct >= 0 ? '+' : '') + fmt.num(p.deltaPct) %>%
+                  </span>
+                <% } %>
+                <% if (p.unstable) { %>
+                  <span class="badge badge-warn" title="One side of this pair crashed — not a clean comparison.">unstable</span>
+                <% } %>
+              </td>
+              <td class="num<%= fmt.missingClass(p.vulkan_prompt_eval) %>"><%= fmt.num(p.vulkan_prompt_eval) %></td>
+              <td class="num<%= fmt.missingClass(p.sycl_prompt_eval) %>"><%= fmt.num(p.sycl_prompt_eval) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="section-note">
+      Only the backend varies within a row. Comparing <em>runtimes</em> this way
+      isn't possible — llama.cpp and vLLM load different model formats, and vLLM
+      has no Vulkan backend on Intel at all, so runtime is held constant inside
+      every pair. See <a href="/methodology#held-constant">what's held constant</a>.
+    </p>
+  <% } %>
+</section>
+
+<section class="section">
+  <h2>Known-bad combinations</h2>
+  <p class="section-note">
+    Verified runs that crashed. These stay published rather than being dropped —
+    when you're deciding what to install, a combination that falls over is worth
+    more than another throughput number. A blank here means nothing has been
+    reported, not that everything works.
+  </p>
+
+  <% if (knownBad.length === 0) { %>
+    <p class="empty-state">
+      No crashed runs recorded yet. If a build fails or falls over for you,
+      <a href="/submit">submit it</a> — a failure with its versions attached is
+      a result.
+    </p>
+  <% } else { %>
+    <div class="table-scroll">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Card</th>
+            <th>Backend</th>
+            <th>Runtime</th>
+            <th>Model</th>
+            <th>Quant</th>
+            <th>Conc.</th>
+            <th>Context</th>
+            <th>Kernel</th>
+            <th>Driver</th>
+            <th>SDK</th>
+            <th>Runtime ver.</th>
+            <th>What happened</th>
+            <th>Observed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% knownBad.forEach(function(r) { %>
+            <tr>
+              <td><%= r.card %></td>
+              <td><%= r.backend %></td>
+              <td><%= r.runtime %></td>
+              <td><%= r.model_name %></td>
+              <td><%= r.quantization %></td>
+              <td class="num"><%= r.concurrency %></td>
+              <td class="num"><%= fmt.int(r.context_length) %></td>
+              <td class="<%= fmt.missingClass(r.kernel_version) %>"><%= fmt.text(r.kernel_version) %></td>
+              <td class="<%= fmt.missingClass(r.gpu_driver_version) %>"><%= fmt.text(r.gpu_driver_version) %></td>
+              <td class="<%= fmt.missingClass(r.sdk_version) %>"><%= fmt.text(r.sdk_version) %></td>
+              <td class="<%= fmt.missingClass(r.runtime_version) %>"><%= fmt.text(r.runtime_version) %></td>
+              <td class="run-notes <%= fmt.missingClass(r.stability_notes) %>"><%= fmt.text(r.stability_notes) %></td>
+              <td class="num"><%= fmt.date(r.observed_at) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<%- include('partials/glossary') %>
+
+<%- include('partials/footer') %>

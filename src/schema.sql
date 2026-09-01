@@ -1,4 +1,6 @@
 -- Battlemage Benchmarks schema (migration v1)
+-- Frozen: this file is migration v1 and must not be edited. Columns added
+-- later live as ALTER TABLE steps in the migrations array in src/db.js.
 
 CREATE TABLE IF NOT EXISTS submissions (
   id                          INTEGER PRIMARY KEY AUTOINCREMENT,

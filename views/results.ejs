@@ -4,6 +4,7 @@ function sortLink(column, label) {
   const params = new URLSearchParams({
     card: filters.card, backend: filters.backend, runtime: filters.runtime,
     quant: filters.quant, concurrency: filters.concurrency,
+    prefill: filters.prefill, recipe: filters.recipe, q: filters.q,
     sort: column, dir: nextDir,
   });
   const arrow = filters.sort === column ? (filters.dir === 'desc' ? ' ▾' : ' ▴') : '';
@@ -21,6 +22,9 @@ function sortLink(column, label) {
   </p>
 
   <form class="filter-form" method="get" action="/results">
+    <label class="filter-search">Search
+      <input type="search" name="q" value="<%= filters.q %>" placeholder="model name">
+    </label>
     <label>Card
       <select name="card">
         <option value="">Any</option>
@@ -46,10 +50,16 @@ function sortLink(column, label) {
       </select>
     </label>
     <label>Quant
-      <input type="text" name="quant" value="<%= filters.quant %>" placeholder="e.g. Q4_K_M">
+      <input type="text" name="quant" value="<%= filters.quant %>" placeholder="e.g. Q4">
     </label>
     <label>Concurrency
       <input type="number" name="concurrency" min="1" value="<%= filters.concurrency %>">
+    </label>
+    <label>Prefill
+      <input type="number" name="prefill" min="1" value="<%= filters.prefill %>" placeholder="prompt tokens">
+    </label>
+    <label>Recipe
+      <input type="text" name="recipe" value="<%= filters.recipe %>" placeholder="e.g. llamacpp-sycl-balanced">
     </label>
     <div class="filter-actions">
       <button type="submit">Filter</button>
@@ -65,15 +75,18 @@ function sortLink(column, label) {
           <th>Backend</th>
           <th>Runtime</th>
           <th>Model</th>
-          <th>Quant</th>
-          <th>Concurrency</th>
-          <th><%- sortLink('context_length', 'Context') %></th>
-          <th><%- sortLink('prompt_eval_tok_s', 'Prompt eval tok/s') %></th>
-          <th><%- sortLink('generation_tok_s', 'Gen tok/s') %></th>
-          <th><%- sortLink('tok_s_per_watt', 'tok/s per W') %></th>
-          <th><%- sortLink('vram_used_mb', 'VRAM') %></th>
-          <th>Stability</th>
+          <th aria-describedby="gloss-quant" title="How tightly the weights are compressed. Q8/FP8 keep the most quality; Q4/INT4 are smaller and faster.">Quant</th>
+          <th aria-describedby="gloss-concurrency" title="Parallel sessions served at once. 1 is single-stream latency; higher values measure throughput under batching.">Concurrency</th>
+          <th aria-describedby="gloss-context" title="KV-cache budget the server was started with. A single shared budget, not carved into per-slot shares — the benchmark runs use a unified KV cache."><%- sortLink('context_length', 'Context') %></th>
+          <th aria-describedby="gloss-prefill" title="Prompt tokens per request — how much work the prompt-eval number is averaged over."><%- sortLink('prompt_tokens', 'Prefill') %></th>
+          <th aria-describedby="gloss-prompt-eval" title="Prefill throughput — how fast the prompt is read before the answer starts."><%- sortLink('prompt_eval_tok_s', 'Prompt eval tok/s') %></th>
+          <th aria-describedby="gloss-gen" title="Decode throughput — tokens produced per second once the answer is underway."><%- sortLink('generation_tok_s', 'Gen tok/s') %></th>
+          <th aria-describedby="gloss-tokw" title="Generation throughput divided by measured GPU power draw. Only present when power was measured."><%- sortLink('tok_s_per_watt', 'tok/s per W') %></th>
+          <th aria-describedby="gloss-vram" title="Graphics memory in use during the run. Each card has 32 GB."><%- sortLink('vram_used_mb', 'VRAM') %></th>
+          <th aria-describedby="gloss-stability" title="Whether the run completed or crashed. Crashed runs stay published.">Stability</th>
+          <th aria-describedby="gloss-verified" title="Date this run was reviewed and published."><%- sortLink('verified_at', 'Verified') %></th>
           <th>Flags / command</th>
+          <th><span class="visually-hidden">Copy</span></th>
         </tr>
       </thead>
       <tbody>
@@ -86,10 +99,11 @@ function sortLink(column, label) {
             <td><%= r.quantization %></td>
             <td class="num"><%= r.concurrency %></td>
             <td class="num"><%= fmt.int(r.context_length) %></td>
-            <td class="num"><%= fmt.num(r.prompt_eval_tok_s) %></td>
-            <td class="num"><%= fmt.num(r.generation_tok_s) %></td>
-            <td class="num"><%= fmt.num(r.tok_s_per_watt, 2) %></td>
-            <td class="num"><%= fmt.int(r.vram_used_mb) %> MB</td>
+            <td class="num<%= fmt.missingClass(r.prompt_tokens) %>"><%= fmt.int(r.prompt_tokens) %></td>
+            <td class="num<%= fmt.missingClass(r.prompt_eval_tok_s) %>"><%= fmt.num(r.prompt_eval_tok_s) %></td>
+            <td class="num<%= fmt.missingClass(r.generation_tok_s) %>"><%= fmt.num(r.generation_tok_s) %></td>
+            <td class="num<%= fmt.missingClass(r.tok_s_per_watt) %>"><%= fmt.num(r.tok_s_per_watt, 2) %></td>
+            <td class="num<%= fmt.missingClass(r.vram_used_mb) %>"><%= fmt.unit(r.vram_used_mb, 'MB') %></td>
             <td>
               <% if (r.crashed) { %>
                 <span class="badge badge-warn">crashed</span>
@@ -97,30 +111,42 @@ function sortLink(column, label) {
                 <span class="badge badge-ok">stable</span>
               <% } %>
             </td>
+            <td class="num"><%= fmt.date(r.verified_at || r.created_at) %></td>
             <td>
               <details>
                 <summary>show</summary>
                 <pre class="command-block"><%= r.full_command %></pre>
                 <dl class="run-meta">
-                  <dt>OS</dt><dd><%= fmt.text(r.os_name) %></dd>
-                  <dt>Kernel</dt><dd><%= fmt.text(r.kernel_version) %></dd>
-                  <dt>Driver</dt><dd><%= fmt.text(r.gpu_driver_version) %></dd>
-                  <dt>SDK</dt><dd><%= fmt.text(r.sdk_version) %></dd>
-                  <dt>Runtime ver.</dt><dd><%= fmt.text(r.runtime_version) %></dd>
-                  <dt>Flash attn</dt><dd><%= fmt.text(r.flash_attention) %></dd>
-                  <dt>MTP</dt><dd><%= fmt.text(r.mtp) %></dd>
-                  <dt>Tensor split</dt><dd><%= fmt.text(r.tensor_split) %></dd>
+                  <dt>OS</dt><dd class="<%= fmt.missingClass(r.os_name) %>"><%= fmt.text(r.os_name) %></dd>
+                  <dt>Kernel</dt><dd class="<%= fmt.missingClass(r.kernel_version) %>"><%= fmt.text(r.kernel_version) %></dd>
+                  <dt>Driver</dt><dd class="<%= fmt.missingClass(r.gpu_driver_version) %>"><%= fmt.text(r.gpu_driver_version) %></dd>
+                  <dt>SDK</dt><dd class="<%= fmt.missingClass(r.sdk_version) %>"><%= fmt.text(r.sdk_version) %></dd>
+                  <dt>Runtime ver.</dt><dd class="<%= fmt.missingClass(r.runtime_version) %>"><%= fmt.text(r.runtime_version) %></dd>
+                  <dt>Flash attn</dt><dd class="<%= fmt.missingClass(r.flash_attention) %>"><%= fmt.text(r.flash_attention) %></dd>
+                  <dt>MTP</dt><dd class="<%= fmt.missingClass(r.mtp) %>"><%= fmt.text(r.mtp) %></dd>
+                  <dt>Tensor split</dt><dd class="<%= fmt.missingClass(r.tensor_split) %>"><%= fmt.text(r.tensor_split) %></dd>
+                  <dt>KV cache</dt><dd class="<%= fmt.missingClass(r.kv_cache_type) %>"><%= fmt.text(r.kv_cache_type) %></dd>
+                  <dt>Recipe</dt><dd class="<%= fmt.missingClass(r.recipe) %>">
+                    <% if (r.recipe) { %>
+                      <a href="/recipes/<%= encodeURIComponent(r.recipe) %>"><%= r.recipe %></a>
+                    <% } else { %>
+                      <%= fmt.NOT_MEASURED %>
+                    <% } %>
+                  </dd>
                 </dl>
               </details>
             </td>
+            <td><button type="button" class="copy-row-btn" aria-label="Copy this result as Markdown" title="Copy as Markdown" data-copy="<%= fmt.markdownRow(r) %>">⎘</button></td>
           </tr>
         <% }) %>
         <% if (rows.length === 0) { %>
-          <tr><td colspan="13">No verified results match these filters.</td></tr>
+          <tr><td colspan="16">No verified results match these filters.</td></tr>
         <% } %>
       </tbody>
     </table>
   </div>
+
+  <%- include('partials/glossary') %>
 </section>
 
 <%- include('partials/footer') %>

@@ -11,6 +11,7 @@
       <h3>Site map</h3>
       <a href="/">Home</a>
       <a href="/results">Results</a>
+      <a href="/compare">Compare</a>
       <a href="/methodology">Methodology</a>
       <a href="/submit">Submit a result</a>
     </nav>
@@ -22,9 +23,18 @@
   </div>
   <div class="footer-bottom">
     <p>Made with <span class="grayscale-icon">❤️</span> by Hamza with help</p>
+    <p class="footer-freshness">
+      <% if (stats.lastVerifiedAt) { %>
+        Last verified result: <%= fmt.date(stats.lastVerifiedAt) %> ·
+        <%= stats.verifiedCount %> verified run<%= stats.verifiedCount === 1 ? '' : 's' %>
+      <% } else { %>
+        No verified results published yet.
+      <% } %>
+    </p>
   </div>
 </footer>
 <script src="/js/bg-ambient.js"></script>
 <script src="/js/theme-toggle.js"></script>
+<script src="/js/copy-row.js"></script>
 </body>
 </html>

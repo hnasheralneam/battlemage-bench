@@ -4,15 +4,18 @@
   <h1><%= card %> · <%= backend %> · <%= runtime %></h1>
   <p class="section-note">
     Every verified run for this card/backend/runtime combination, across the
-    context lengths and concurrency levels tested so far.
+    context lengths, prefill lengths and concurrency levels tested so far.
   </p>
 
   <% if (runs.length === 0) { %>
     <p class="empty-state">No verified runs yet for this configuration. <a href="/submit">Submit one →</a></p>
   <% } else {
-    const genRates = runs.map(function(r) { return r.generation_tok_s; });
-    const wattRates = runs.map(function(r) { return r.tok_s_per_watt; }).filter(function(v) { return v !== null && v !== undefined; });
-    const bestGen = Math.max.apply(null, genRates);
+    // Crashed runs stay in the table below — a configuration that falls over
+    // is a result — but they measured nothing, so they are kept out of the
+    // charts and the headline stats rather than plotted as a gap or a zero.
+    const measured = runs.filter(function(r) { return !r.crashed && r.generation_tok_s !== null; });
+    const wattRates = measured.map(function(r) { return r.tok_s_per_watt; }).filter(function(v) { return v !== null && v !== undefined; });
+    const bestGen = measured.length ? Math.max.apply(null, measured.map(function(r) { return r.generation_tok_s; })) : null;
     const bestWatt = wattRates.length ? Math.max.apply(null, wattRates) : null;
   %>
     <div class="stat-row">
@@ -20,10 +23,12 @@
         <span class="stat-value"><%= runs.length %></span>
         <span class="stat-label">runs recorded</span>
       </div>
-      <div class="stat">
-        <span class="stat-value"><%= fmt.num(bestGen) %> tok/s</span>
-        <span class="stat-label">best generation throughput</span>
-      </div>
+      <% if (bestGen !== null) { %>
+        <div class="stat">
+          <span class="stat-value"><%= fmt.num(bestGen) %> tok/s</span>
+          <span class="stat-label">best generation throughput</span>
+        </div>
+      <% } %>
       <% if (bestWatt !== null) { %>
         <div class="stat">
           <span class="stat-value"><%= fmt.num(bestWatt, 2) %></span>
@@ -35,15 +40,22 @@
       <div class="chart-wrap">
         <h3>Generation tok/s vs. context length</h3>
         <canvas id="context-chart" height="180"
-          data-chart="<%- fmt.chartAttr(runs.map(function(r) {
+          data-chart="<%- fmt.chartAttr(measured.map(function(r) {
             return { context_length: r.context_length, concurrency: r.concurrency, generation_tok_s: r.generation_tok_s };
           })) %>"></canvas>
       </div>
       <div class="chart-wrap">
-        <h3>Generation tok/s by quantization</h3>
+        <h3>Prompt eval tok/s vs. prefill length</h3>
+        <canvas id="prefill-chart" height="180"
+          data-chart="<%- fmt.chartAttr(measured.map(function(r) {
+            return { prompt_tokens: r.prompt_tokens, context_length: r.context_length, prompt_eval_tok_s: r.prompt_eval_tok_s };
+          })) %>"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <h3>Generation tok/s by model and quantization</h3>
         <canvas id="quant-chart" height="180"
-          data-chart="<%- fmt.chartAttr(runs.map(function(r) {
-            return { quantization: r.quantization, generation_tok_s: r.generation_tok_s };
+          data-chart="<%- fmt.chartAttr(measured.map(function(r) {
+            return { model_name: r.model_name, quantization: r.quantization, generation_tok_s: r.generation_tok_s };
           })) %>"></canvas>
       </div>
     </div>
@@ -55,15 +67,17 @@
         <thead>
           <tr>
             <th>Model</th>
-            <th>Quant</th>
-            <th>Concurrency</th>
-            <th>Context</th>
-            <th>Prompt eval tok/s</th>
-            <th>Gen tok/s</th>
-            <th>tok/s per W</th>
-            <th>VRAM</th>
-            <th>Stability</th>
+            <th aria-describedby="gloss-quant" title="How tightly the weights are compressed. Q8/FP8 keep the most quality; Q4/INT4 are smaller and faster.">Quant</th>
+            <th aria-describedby="gloss-concurrency" title="Parallel sessions served at once. 1 is single-stream latency; higher values measure throughput under batching.">Concurrency</th>
+            <th aria-describedby="gloss-context" title="KV-cache budget for the run — a total across parallel slots, not a per-session figure.">Context</th>
+            <th aria-describedby="gloss-prefill" title="Prompt tokens per request — how much work the prompt-eval number is averaged over.">Prefill</th>
+            <th aria-describedby="gloss-prompt-eval" title="Prefill throughput — how fast the prompt is read before the answer starts.">Prompt eval tok/s</th>
+            <th aria-describedby="gloss-gen" title="Decode throughput — tokens produced per second once the answer is underway.">Gen tok/s</th>
+            <th aria-describedby="gloss-tokw" title="Generation throughput divided by measured GPU power draw. Only present when power was measured.">tok/s per W</th>
+            <th aria-describedby="gloss-vram" title="Graphics memory in use during the run. Each card has 32 GB.">VRAM</th>
+            <th aria-describedby="gloss-stability" title="Whether the run completed or crashed. Crashed runs stay published.">Stability</th>
             <th>Flags / log</th>
+            <th><span class="visually-hidden">Copy</span></th>
           </tr>
         </thead>
         <tbody>
@@ -73,10 +87,11 @@
               <td><%= r.quantization %></td>
               <td class="num"><%= r.concurrency %></td>
               <td class="num"><%= fmt.int(r.context_length) %></td>
-              <td class="num"><%= fmt.num(r.prompt_eval_tok_s) %></td>
-              <td class="num"><%= fmt.num(r.generation_tok_s) %></td>
-              <td class="num"><%= fmt.num(r.tok_s_per_watt, 2) %></td>
-              <td class="num"><%= fmt.int(r.vram_used_mb) %> MB</td>
+              <td class="num<%= fmt.missingClass(r.prompt_tokens) %>"><%= fmt.int(r.prompt_tokens) %></td>
+              <td class="num<%= fmt.missingClass(r.prompt_eval_tok_s) %>"><%= fmt.num(r.prompt_eval_tok_s) %></td>
+              <td class="num<%= fmt.missingClass(r.generation_tok_s) %>"><%= fmt.num(r.generation_tok_s) %></td>
+              <td class="num<%= fmt.missingClass(r.tok_s_per_watt) %>"><%= fmt.num(r.tok_s_per_watt, 2) %></td>
+              <td class="num<%= fmt.missingClass(r.vram_used_mb) %>"><%= fmt.unit(r.vram_used_mb, 'MB') %></td>
               <td>
                 <% if (r.crashed) { %>
                   <span class="badge badge-warn">crashed</span><% if (r.stability_notes) { %> <span class="run-notes"><%= r.stability_notes %></span><% } %>
@@ -89,16 +104,16 @@
                   <summary>show</summary>
                   <pre class="command-block"><%= r.full_command %></pre>
                   <dl class="run-meta">
-                    <dt>OS</dt><dd><%= fmt.text(r.os_name) %></dd>
-                    <dt>Kernel</dt><dd><%= fmt.text(r.kernel_version) %></dd>
-                    <dt>Driver</dt><dd><%= fmt.text(r.gpu_driver_version) %></dd>
-                    <dt>SDK</dt><dd><%= fmt.text(r.sdk_version) %></dd>
-                    <dt>Runtime ver.</dt><dd><%= fmt.text(r.runtime_version) %></dd>
-                    <dt>Flash attn</dt><dd><%= fmt.text(r.flash_attention) %></dd>
-                    <dt>MTP</dt><dd><%= fmt.text(r.mtp) %></dd>
-                    <dt>Tensor split</dt><dd><%= fmt.text(r.tensor_split) %></dd>
-                    <dt>Power limit</dt><dd><%= fmt.num(r.power_limit_watts, 0) %> W</dd>
-                    <dt>Measured draw</dt><dd><%= fmt.num(r.measured_power_draw_watts, 0) %> W</dd>
+                    <dt>OS</dt><dd class="<%= fmt.missingClass(r.os_name) %>"><%= fmt.text(r.os_name) %></dd>
+                    <dt>Kernel</dt><dd class="<%= fmt.missingClass(r.kernel_version) %>"><%= fmt.text(r.kernel_version) %></dd>
+                    <dt>Driver</dt><dd class="<%= fmt.missingClass(r.gpu_driver_version) %>"><%= fmt.text(r.gpu_driver_version) %></dd>
+                    <dt>SDK</dt><dd class="<%= fmt.missingClass(r.sdk_version) %>"><%= fmt.text(r.sdk_version) %></dd>
+                    <dt>Runtime ver.</dt><dd class="<%= fmt.missingClass(r.runtime_version) %>"><%= fmt.text(r.runtime_version) %></dd>
+                    <dt>Flash attn</dt><dd class="<%= fmt.missingClass(r.flash_attention) %>"><%= fmt.text(r.flash_attention) %></dd>
+                    <dt>MTP</dt><dd class="<%= fmt.missingClass(r.mtp) %>"><%= fmt.text(r.mtp) %></dd>
+                    <dt>Tensor split</dt><dd class="<%= fmt.missingClass(r.tensor_split) %>"><%= fmt.text(r.tensor_split) %></dd>
+                    <dt>Power limit</dt><dd class="<%= fmt.missingClass(r.power_limit_watts) %>"><%= fmt.unit(r.power_limit_watts, 'W', 0) %></dd>
+                    <dt>Measured draw</dt><dd class="<%= fmt.missingClass(r.measured_power_draw_watts) %>"><%= fmt.unit(r.measured_power_draw_watts, 'W', 0) %></dd>
                   </dl>
                   <% if (r.raw_log) { %>
                     <details>
@@ -109,11 +124,14 @@
                   <% if (r.notes) { %><p class="run-notes"><%= r.notes %></p><% } %>
                 </details>
               </td>
+              <td><button type="button" class="copy-row-btn" aria-label="Copy this result as Markdown" title="Copy as Markdown" data-copy="<%= fmt.markdownRow(r) %>">⎘</button></td>
             </tr>
           <% }) %>
         </tbody>
       </table>
     </div>
+
+    <%- include('partials/glossary') %>
   <% } %>
 </section>
 

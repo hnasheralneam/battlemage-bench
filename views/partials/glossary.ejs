@@ -1,0 +1,109 @@
+<%
+// Reading key for the tables above. Both /results and /config-detail include
+// this, so the ids referenced by their <th aria-describedby> attributes are
+// defined exactly once per page.
+%>
+<details class="glossary">
+  <summary>What these columns mean</summary>
+  <p class="glossary-intro">
+    Speeds are in <strong>tok/s</strong> — tokens per second. A token is about
+    ¾ of a word, so 100 tok/s is roughly 75 words a second. Values that were
+    never recorded read <span class="not-measured">not measured</span> rather
+    than showing a zero.
+  </p>
+  <dl class="glossary-list">
+    <dt>Prompt eval tok/s</dt>
+    <dd id="gloss-prompt-eval">
+      Prefill throughput — how fast the prompt itself is read before any
+      answer starts. Matters most for long-context and RAG-style work.
+    </dd>
+
+    <dt>Gen tok/s</dt>
+    <dd id="gloss-gen">
+      Decode throughput — tokens produced per second once the answer is
+      underway. The number most people mean by "tokens per second."
+      Reported as <em>aggregate</em> throughput — the total across every
+      parallel session, not the rate one session sees — so it is comparable
+      across the concurrency sweep. Per-session rate falls as concurrency
+      rises even while this climbs; the per-slot figure is kept in each run's
+      raw log.
+    </dd>
+
+    <dt>tok/s per W</dt>
+    <dd id="gloss-tokw">
+      Generation throughput divided by the GPU power actually drawn during the
+      run. Only present when power was measured.
+    </dd>
+
+    <dt>Context</dt>
+    <dd id="gloss-context">
+      The KV-cache budget the server was started with, not the number of
+      tokens actually used. The benchmark runs use a <em>unified</em> KV cache,
+      so this is one shared pool rather than a total carved into fixed
+      per-slot shares — raising concurrency does not shrink each session's
+      ceiling. See the <a href="/methodology">methodology</a>.
+    </dd>
+
+    <dt>Prefill</dt>
+    <dd id="gloss-prefill">
+      How many prompt tokens each request carried. The second axis of the
+      sweep alongside context: prefill sets how much work the prompt-eval
+      number is averaged over.
+    </dd>
+
+    <dt>Concurrency</dt>
+    <dd id="gloss-concurrency">
+      Parallel sessions served at once. 1 is single-stream latency, which
+      suits llama.cpp's design; higher values measure aggregate throughput
+      under continuous batching, which suits vLLM's. One concurrency level
+      alone never tells the whole story.
+    </dd>
+
+    <dt>Quant</dt>
+    <dd id="gloss-quant">
+      How tightly the model's weights are compressed. Q8 and FP8 keep the most
+      quality and need the most memory; Q4 and INT4 halve the memory and run
+      faster, at some cost to output quality. llama.cpp uses GGUF quants
+      (Q4_K_M, Q8_0); vLLM uses AWQ/GPTQ/FP8 — these are different formats,
+      not interchangeable settings.
+    </dd>
+
+    <dt>VRAM</dt>
+    <dd id="gloss-vram">
+      Graphics memory in use during the run. A B70 and B65 each have 32 GB, so
+      this is what decides whether a model fits on one card.
+    </dd>
+
+    <dt>Flash attention</dt>
+    <dd id="gloss-flash">
+      A memory-efficient attention kernel. When on, it lowers KV-cache
+      pressure and usually raises long-context throughput.
+    </dd>
+
+    <dt>MTP</dt>
+    <dd id="gloss-mtp">
+      Multi-token prediction — a small draft model guesses several tokens
+      ahead and the main model checks them in one pass, so answers arrive
+      faster without changing what the model would have said.
+    </dd>
+
+    <dt>Tensor split</dt>
+    <dd id="gloss-tensor-split">
+      How the model's layers were divided across multiple GPUs.
+    </dd>
+
+    <dt>Stability</dt>
+    <dd id="gloss-stability">
+      Whether the run completed or crashed. A fast number from a build that
+      falls over is not a fair win — crashed runs stay published rather than
+      being quietly dropped.
+    </dd>
+
+    <dt>Verified</dt>
+    <dd id="gloss-verified">
+      The date this run was reviewed and published. Every result here,
+      including the maintainer's own, goes through the same
+      <a href="/submit">submission</a> and review path.
+    </dd>
+  </dl>
+</details>

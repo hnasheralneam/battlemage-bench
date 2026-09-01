@@ -67,6 +67,7 @@ function field(name, label, opts) {
           <%- field('concurrency', 'Concurrency', { type: 'number' }) %>
           <%- field('context_length', 'Context length', { type: 'number' }) %>
         </div>
+        <%- field('prompt_tokens', 'Prefill length (prompt tokens)', { type: 'number' }) %>
       </fieldset>
 
       <fieldset>
@@ -76,6 +77,8 @@ function field(name, label, opts) {
           <%- field('mtp', 'MTP', { type: 'select', options: TRISTATE }) %>
         </div>
         <%- field('tensor_split', 'Tensor split') %>
+        <%- field('kv_cache_type', 'KV cache type') %>
+        <%- field('recipe', 'Recipe') %>
         <%- field('full_command', 'Full command', { type: 'textarea', rows: 3 }) %>
       </fieldset>
 

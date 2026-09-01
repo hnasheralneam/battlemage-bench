@@ -1,45 +1,34 @@
 #!/bin/bash
-# vLLM server launch for the SYCL/XPU backend (vLLM has no Vulkan backend on
-# Intel GPUs, so there's only one variant of this file, unlike the two
-# llama-server-launch.*.sh files).
+# Launches `vllm serve` for one benchmark cell, using a named recipe from
+# ../../recipes as the source of every tuning flag. Same arrangement as
+# llama-server-launch.sh — see the reasoning there.
 #
-# --- EDIT ME ---
-# This is a placeholder based on vLLM's documented XPU invocation shape, not
-# a real tuned command like the llama.cpp launch scripts — fill in your
-# actual environment activation, model, and flags before running it for
-# real. In particular:
-#   - VLLM_ENV_ACTIVATE below assumes a venv; swap for conda/uv/etc. as needed
-#   - VLLM_EXTRA_ARGS is where any tuning flags (max-num-seqs, gpu-memory-
-#     utilization, dtype/quantization, block-size, etc.) should go
+# Overrides only what the test matrix sweeps:
+#   VLLM_MAX_MODEL_LEN  — the swept context axis
+#   VLLM_PORT / VLLM_MODEL — per-run plumbing
+#
+# vLLM's sampling is per-request (set by `vllm bench serve`), not a serve-time
+# flag, so there is no sampling override to make here.
 #
 # Invoked by run-vllm.sh with:
-#   VLLM_MODEL=<path-or-hf-id> VLLM_PORT=<port> [VLLM_MAX_MODEL_LEN=<n>] \
-#     ./vllm-serve-launch.sh
-#
-# Uses `exec` so the resulting vllm serve process takes over this script's
-# PID directly — the caller can kill that one PID cleanly.
+#   BENCH_RECIPE=<recipe-name> VLLM_MODEL=<path-or-id> VLLM_PORT=<port> \
+#     [VLLM_MAX_MODEL_LEN=<n>] ./vllm-serve-launch.sh
 
 set -euo pipefail
 
-# --- EDIT ME: path to the Python env with vLLM's XPU build installed ---
-VLLM_ENV_ACTIVATE="${VLLM_ENV_ACTIVATE:-$HOME/vllm-xpu/bin/activate}"
-if [[ -f "$VLLM_ENV_ACTIVATE" ]]; then
-  source "$VLLM_ENV_ACTIVATE"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+: "${BENCH_RECIPE:?BENCH_RECIPE is required — a name from recipes/, e.g. vllm-sycl-balanced}"
+RECIPE_FILE="$REPO_ROOT/recipes/$BENCH_RECIPE.sh"
+if [[ ! -f "$RECIPE_FILE" ]]; then
+  echo "No such recipe: $RECIPE_FILE" >&2
+  echo "Available:" >&2
+  ls "$REPO_ROOT/recipes"/vllm-*.sh 2>/dev/null | xargs -n1 basename >&2
+  exit 1
 fi
 
-export CUDA_VISIBLE_DEVICES=""
-export ONEAPI_DEVICE_SELECTOR="level_zero:gpu"
+# shellcheck disable=SC1090
+source "$RECIPE_FILE"
 
-: "${VLLM_MODEL:?VLLM_MODEL is required}"
-: "${VLLM_PORT:?VLLM_PORT is required}"
-VLLM_MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-32768}"
-
-# --- EDIT ME: any additional tuning flags, held constant across the sweep ---
-VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:-}"
-
-exec vllm serve "$VLLM_MODEL" \
-  --device xpu \
-  --port "$VLLM_PORT" \
-  --host 0.0.0.0 \
-  --max-model-len "$VLLM_MAX_MODEL_LEN" \
-  $VLLM_EXTRA_ARGS
+recipe_launch

@@ -27,18 +27,38 @@ function field(name, label, opts) {
   } else if (type === 'textarea') {
     control = `<textarea id="${name}" name="${name}" rows="${opts.rows || 4}" ${required}>${value}</textarea>`;
   } else {
-    control = `<input type="${type}" id="${name}" name="${name}" value="${value}" ${opts.step ? `step="${opts.step}"` : ''} ${opts.min !== undefined ? `min="${opts.min}"` : ''} ${required}>`;
+    // opts.list attaches a <datalist> of suggested values while leaving the
+    // field free text — the canonical models and recipes are offered without
+    // making anything else unsubmittable.
+    const list = opts.list ? `list="${name}-options"` : '';
+    control = `<input type="${type}" id="${name}" name="${name}" value="${value}" ${list} ${opts.step ? `step="${opts.step}"` : ''} ${opts.min !== undefined ? `min="${opts.min}"` : ''} ${required}>`;
+    if (opts.list) {
+      control += `<datalist id="${name}-options">` +
+        opts.list.map((o) => `<option value="${escapeHtml(o)}"></option>`).join('') +
+        `</datalist>`;
+    }
   }
   return `<div class="form-row${error ? ' has-error' : ''}">` +
     `<label for="${name}">${escapeHtml(label)}${opts.required ? ' *' : ''}</label>` +
     control +
+    (opts.hint ? `<span class="field-hint">${escapeHtml(opts.hint)}</span>` : '') +
     (error ? `<span class="field-error">${escapeHtml(error)}</span>` : '') +
     `</div>`;
+}
+// Each collapsible step renders the same summary row: index, title, a
+// required/optional tag, and a completion tick the stepper script reveals.
+function stepSummary(index, title, isRequired) {
+  return `<summary class="form-step-summary">` +
+    `<span class="form-step-index">${index}</span>` +
+    `<span class="form-step-title">${escapeHtml(title)}</span>` +
+    `<span class="form-step-tag${isRequired ? ' is-required' : ''}">${isRequired ? 'required' : 'optional'}</span>` +
+    `<span class="form-step-check" aria-hidden="true">✓</span>` +
+    `</summary>`;
 }
 %>
 <%- include('partials/header') %>
 
-<section class="section">
+<section class="section submit-col">
   <h1>Submit a result</h1>
   <p class="section-note">
     Every submission — including the maintainer's own — goes into a review
@@ -47,7 +67,32 @@ function field(name, label, opts) {
   </p>
 </section>
 
-<section class="section agent-box">
+<section class="section submit-col">
+  <h2>How do you want to do this?</h2>
+  <p class="section-note">Pick one — you can switch at any point.</p>
+  <div class="path-choice">
+    <button type="button" class="path-card" data-path-target="agent-path" aria-pressed="false">
+      <span class="link-card-index">01</span>
+      <h3>Have an agent fill it in</h3>
+      <p>
+        Copy a prompt for your own coding agent, paste back the JSON it
+        produces, then review each section before submitting.
+      </p>
+      <span class="link-card-arrow" aria-hidden="true">→</span>
+    </button>
+    <button type="button" class="path-card" data-path-target="manual-path" aria-pressed="false">
+      <span class="link-card-index">02</span>
+      <h3>Fill it in myself</h3>
+      <p>
+        Step through the form one section at a time. Only three sections are
+        required — the rest add context.
+      </p>
+      <span class="link-card-arrow" aria-hidden="true">→</span>
+    </button>
+  </div>
+</section>
+
+<section class="section agent-box submit-col" id="agent-path">
   <h2>Have an AI agent fill this in for you</h2>
   <p class="section-note">
     Copy this prompt and hand it to your own coding agent (e.g. Claude Code)
@@ -55,10 +100,13 @@ function field(name, label, opts) {
     versions and results, then hand you back a JSON blob — paste that below
     to auto-fill the form.
   </p>
-  <div class="prompt-wrap">
-    <pre id="agent-prompt" class="command-block agent-prompt"><%= agentPrompt %></pre>
-    <button type="button" id="copy-prompt-btn" class="secondary-btn">Copy prompt</button>
-  </div>
+  <details class="prompt-disclosure" open>
+    <summary>the prompt</summary>
+    <div class="prompt-wrap">
+      <pre id="agent-prompt" class="command-block agent-prompt"><%= agentPrompt %></pre>
+      <button type="button" id="copy-prompt-btn" class="secondary-btn">Copy prompt</button>
+    </div>
+  </details>
 
   <label for="agent-json" class="paste-label">Paste from agent (JSON)</label>
   <textarea id="agent-json" rows="6" placeholder='{"card": "B70", "backend": "Vulkan", ...}'></textarea>
@@ -66,79 +114,129 @@ function field(name, label, opts) {
   <p id="fill-from-json-status" class="fill-status" role="status"></p>
 </section>
 
-<section class="section">
+<section class="section submit-col" id="manual-path">
+  <h2>The form</h2>
+  <p class="section-note">
+    Fill in a section, hit <strong>Next</strong>, and the following one opens.
+    Anything already filled in from an agent paste is yours to review.
+  </p>
   <form method="post" action="/submit" id="submit-form" novalidate>
-    <div class="form-grid">
-      <fieldset>
-        <legend>About you</legend>
-        <%- field('submitter_name', 'Name / handle') %>
-        <%- field('submitter_contact', 'Contact (optional, not published)') %>
-      </fieldset>
+    <div class="form-steps">
 
-      <fieldset>
-        <legend>What you tested</legend>
-        <%- field('card', 'Card', { type: 'select', options: CARDS, blank: true, required: true }) %>
-        <%- field('backend', 'Backend', { type: 'select', options: BACKENDS, blank: true, required: true }) %>
-        <%- field('runtime', 'Runtime', { type: 'select', options: RUNTIMES, blank: true, required: true }) %>
-        <%- field('model_name', 'Model', { required: true }) %>
-        <%- field('quantization', 'Quantization', { required: true }) %>
-        <div class="field-pair">
-          <%- field('concurrency', 'Concurrency / parallel sessions', { type: 'number', min: 1, required: true }) %>
-          <%- field('context_length', 'Context length', { type: 'number', min: 1, required: true }) %>
+      <details class="form-step" open>
+        <%- stepSummary('01', 'What you tested', true) %>
+        <div class="form-step-body">
+          <%- field('card', 'Card', { type: 'select', options: CARDS, blank: true, required: true }) %>
+          <%- field('backend', 'Backend', { type: 'select', options: BACKENDS, blank: true, required: true }) %>
+          <%- field('runtime', 'Runtime', { type: 'select', options: RUNTIMES, blank: true, required: true }) %>
+          <%- field('model_name', 'Model', { required: true, list: MODEL_NAMES, hint: 'The three models this site sweeps are suggested; any other model is welcome.' }) %>
+          <%- field('quantization', 'Quantization', { required: true }) %>
+          <div class="field-pair">
+            <%- field('concurrency', 'Concurrency / parallel sessions', { type: 'number', min: 1, required: true }) %>
+            <%- field('context_length', 'Context length', { type: 'number', min: 1, required: true }) %>
+          </div>
+          <%- field('prompt_tokens', 'Prefill length (prompt tokens per request)', { type: 'number', min: 1 }) %>
+          <div class="form-step-actions">
+            <span></span>
+            <button type="button" class="primary-btn step-next-btn">Next</button>
+          </div>
         </div>
-      </fieldset>
+      </details>
 
-      <fieldset>
-        <legend>Flags &amp; configuration</legend>
-        <div class="field-pair">
-          <%- field('flash_attention', 'Flash attention', { type: 'select', options: TRISTATE }) %>
-          <%- field('mtp', 'MTP (multi-token prediction)', { type: 'select', options: TRISTATE }) %>
+      <details class="form-step" open>
+        <%- stepSummary('02', 'Flags & configuration', true) %>
+        <div class="form-step-body">
+          <div class="field-pair">
+            <%- field('flash_attention', 'Flash attention', { type: 'select', options: TRISTATE }) %>
+            <%- field('mtp', 'MTP (multi-token prediction)', { type: 'select', options: TRISTATE }) %>
+          </div>
+          <%- field('tensor_split', 'Tensor split') %>
+          <%- field('kv_cache_type', 'KV cache type', { hint: 'Precision and mode, read off the actual command — e.g. "q8_0/q4_1 unified", "fp8 paged".' }) %>
+          <%- field('recipe', 'Recipe', { type: 'select', options: RECIPE_NAMES, blank: true, hint: 'If you launched from one of the site recipes unmodified, name it. Leave blank for your own configuration — an edited recipe is your own configuration.' }) %>
+          <%- field('full_command', 'Full command / flags used', { type: 'textarea', rows: 3, required: true }) %>
+          <div class="form-step-actions">
+            <button type="button" class="secondary-btn step-back-btn">Back</button>
+            <button type="button" class="primary-btn step-next-btn">Next</button>
+          </div>
         </div>
-        <%- field('tensor_split', 'Tensor split') %>
-        <%- field('full_command', 'Full command / flags used', { type: 'textarea', rows: 3, required: true }) %>
-      </fieldset>
+      </details>
 
-      <fieldset>
-        <legend>System &amp; software versions</legend>
-        <%- field('os_name', 'OS') %>
-        <%- field('kernel_version', 'Kernel version') %>
-        <%- field('gpu_driver_version', 'GPU driver version') %>
-        <%- field('sdk_version', 'SDK version (oneAPI / Vulkan)') %>
-        <%- field('runtime_version', 'Runtime version (llama.cpp/vLLM build or commit)') %>
-      </fieldset>
-
-      <fieldset>
-        <legend>Power &amp; memory</legend>
-        <div class="field-pair" style="--field-pair-cols: 3;">
-          <%- field('power_limit_watts', 'Power limit (W)', { type: 'number', step: '0.1' }) %>
-          <%- field('measured_power_draw_watts', 'Measured power draw (W)', { type: 'number', step: '0.1' }) %>
-          <%- field('vram_used_mb', 'VRAM used (MB)', { type: 'number' }) %>
+      <details class="form-step" open>
+        <%- stepSummary('03', 'Results', true) %>
+        <div class="form-step-body">
+          <div class="field-pair">
+            <%- field('prompt_eval_tok_s', 'Prompt eval tok/s') %>
+            <%- field('generation_tok_s', 'Generation tok/s', { hint: 'Aggregate — total tokens per second of wall time across all parallel sessions, not the rate one session sees. Leave blank only if the run crashed.' }) %>
+          </div>
+          <div class="form-step-actions">
+            <button type="button" class="secondary-btn step-back-btn">Back</button>
+            <button type="button" class="primary-btn step-next-btn">Next</button>
+          </div>
         </div>
-      </fieldset>
+      </details>
 
-      <fieldset>
-        <legend>Results</legend>
-        <div class="field-pair">
-          <%- field('prompt_eval_tok_s', 'Prompt eval tok/s') %>
-          <%- field('generation_tok_s', 'Generation tok/s', { required: true }) %>
+      <details class="form-step" open>
+        <%- stepSummary('04', 'System & software versions', false) %>
+        <div class="form-step-body">
+          <%- field('os_name', 'OS') %>
+          <%- field('kernel_version', 'Kernel version') %>
+          <%- field('gpu_driver_version', 'GPU driver version') %>
+          <%- field('sdk_version', 'SDK version (oneAPI / Vulkan)') %>
+          <%- field('runtime_version', 'Runtime version (llama.cpp/vLLM build or commit)') %>
+          <div class="form-step-actions">
+            <button type="button" class="secondary-btn step-back-btn">Back</button>
+            <button type="button" class="primary-btn step-next-btn">Next</button>
+          </div>
         </div>
-      </fieldset>
+      </details>
 
-      <fieldset>
-        <legend>Stability &amp; notes</legend>
-        <div class="form-row form-row-checkbox">
-          <label for="crashed">
-            <input type="checkbox" id="crashed" name="crashed" <%= (values.crashed === '1' || values.crashed === 1 || values.crashed === 'on') ? 'checked' : '' %>>
-            Run crashed or was unstable
-          </label>
+      <details class="form-step" open>
+        <%- stepSummary('05', 'Power & memory', false) %>
+        <div class="form-step-body">
+          <div class="field-pair" style="--field-pair-cols: 3;">
+            <%- field('power_limit_watts', 'Power limit (W)', { type: 'number', step: '0.1' }) %>
+            <%- field('measured_power_draw_watts', 'Measured power draw (W)', { type: 'number', step: '0.1' }) %>
+            <%- field('vram_used_mb', 'VRAM used (MB)', { type: 'number' }) %>
+          </div>
+          <div class="form-step-actions">
+            <button type="button" class="secondary-btn step-back-btn">Back</button>
+            <button type="button" class="primary-btn step-next-btn">Next</button>
+          </div>
         </div>
-        <%- field('stability_notes', 'Stability notes', { type: 'textarea', rows: 2 }) %>
-        <%- field('raw_log', 'Raw log output', { type: 'textarea', rows: 6 }) %>
-        <%- field('notes', 'Other notes', { type: 'textarea', rows: 2 }) %>
-      </fieldset>
+      </details>
+
+      <details class="form-step" open>
+        <%- stepSummary('06', 'Stability & notes', false) %>
+        <div class="form-step-body">
+          <div class="form-row form-row-checkbox">
+            <label for="crashed">
+              <input type="checkbox" id="crashed" name="crashed" <%= (values.crashed === '1' || values.crashed === 1 || values.crashed === 'on') ? 'checked' : '' %>>
+              Run crashed or was unstable
+            </label>
+          </div>
+          <%- field('stability_notes', 'Stability notes', { type: 'textarea', rows: 2 }) %>
+          <%- field('raw_log', 'Raw log output', { type: 'textarea', rows: 6 }) %>
+          <%- field('notes', 'Other notes', { type: 'textarea', rows: 2 }) %>
+          <div class="form-step-actions">
+            <button type="button" class="secondary-btn step-back-btn">Back</button>
+            <button type="button" class="primary-btn step-next-btn">Next</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="form-step" open>
+        <%- stepSummary('07', 'About you', false) %>
+        <div class="form-step-body">
+          <%- field('submitter_name', 'Name / handle') %>
+          <%- field('submitter_contact', 'Contact (optional, not published)') %>
+          <div class="form-step-actions">
+            <button type="button" class="secondary-btn step-back-btn">Back</button>
+            <button type="submit" class="primary-btn">Submit for review</button>
+          </div>
+        </div>
+      </details>
+
     </div>
-
-    <button type="submit" class="primary-btn">Submit for review</button>
   </form>
 </section>
 

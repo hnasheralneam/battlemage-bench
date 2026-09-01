@@ -1,0 +1,80 @@
+<%- include('partials/header') %>
+
+<section class="section prose">
+  <h1>Recipes</h1>
+  <p>
+    A small, hand-picked set of launch scripts for running a local model on a
+    B70 or B65 — three profiles per runtime and backend, and nothing else.
+    These are not generated from the results table; they are chosen, and the
+    reasoning is written into each file.
+  </p>
+  <p>
+    They are also the exact scripts the benchmark runner launches. Every number
+    on this site was produced by one of these files, with only the swept axes
+    (context, concurrency, prefill) and greedy decoding overridden — so the
+    script you copy is the script that was measured, not an idealised version
+    of it.
+  </p>
+
+  <h2>The three profiles</h2>
+  <dl>
+    <dt>performance</dt>
+    <dd>
+      Fastest tokens for a single session. Small context ceiling, big batches.
+      Pick this for interactive chat and coding when you are the only user.
+    </dd>
+    <dt>balanced</dt>
+    <dd>
+      The one to run if you are not sure. Real context, a few parallel slots,
+      headroom left over.
+    </dd>
+    <dt>context</dt>
+    <dd>
+      As much context as a 32 GB card will hold, bought with heavier KV
+      quantisation and a slower decode. For long documents and RAG.
+    </dd>
+  </dl>
+
+  <% if (recipes.length === 0) { %>
+    <p class="empty-state">No recipe files found.</p>
+  <% } else { %>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Recipe</th>
+            <th>Runtime</th>
+            <th>Backend</th>
+            <th>Profile</th>
+            <th>KV cache</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% recipes.forEach(function(r) { %>
+            <tr>
+              <td><a href="/recipes/<%= r.name %>"><code><%= r.name %></code></a></td>
+              <td><%= r.runtime %></td>
+              <td><%= r.backend %></td>
+              <td><%= r.profile %></td>
+              <td><code><%= r.kvCacheType %></code></td>
+              <td><a href="/results?recipe=<%= r.name %>">Results →</a></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
+  <p class="section-note">
+    vLLM has no Vulkan backend on Intel GPUs, so there is no
+    <code>vllm-vulkan-*</code> recipe — that combination does not exist, rather
+    than being untested. See the
+    <a href="/methodology">methodology</a> for what the benchmarks behind these
+    do and don't establish, and
+    <a href="/submit">submit a result</a> if a recipe performs differently on
+    your machine.
+  </p>
+</section>
+
+<%- include('partials/footer') %>

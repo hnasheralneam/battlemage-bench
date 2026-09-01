@@ -29,14 +29,17 @@ Required:
   --model-name <name>
   --quantization <quant>
   --concurrency <n>
-  --context-length <n>
+  --context-length <n>          server KV budget (--ctx-size/--max-model-len)
   --full-command <string>     verbatim command that was actually run
-  --repeats-json <json>       array of {generation_tok_s, prompt_eval_tok_s, ...}
-                              from each repeat, in order; first entry is
-                              treated as a warmup run and discarded when
-                              more than one repeat is given
+  --repeats-json <json>       array of {generation_tok_s, prompt_eval_tok_s,
+                              prompt_tokens, ...} from each repeat, in order;
+                              first entry is treated as a warmup run and
+                              discarded when more than one repeat is given
 
 Optional:
+  --prompt-tokens <n>         prefill length targeted for this cell; used as
+                              the recorded value only when the repeats carry
+                              no measured prompt_tokens of their own
   --system-info-file <path>   cache/system-info.json from
                               collect-system-info.sh (fills os/kernel/driver)
   --sdk-version <string>      overrides the backend-derived value from
@@ -45,6 +48,8 @@ Optional:
   --flash-attention <on|off|unknown>   (default: unknown)
   --mtp <on|off|unknown>                (default: unknown)
   --tensor-split <string>
+  --recipe <name>              recipes/<name>.sh that produced this run
+  --kv-cache-type <string>     KV precision and mode, e.g. "q8_0/q4_1 unified"
   --power-limit-watts <n>
   --measured-power-draw-watts <n>
   --vram-used-mb <n>
@@ -74,6 +79,7 @@ function parseArgv() {
       quantization: { type: 'string' },
       concurrency: { type: 'string' },
       'context-length': { type: 'string' },
+      'prompt-tokens': { type: 'string' },
       'full-command': { type: 'string' },
       'repeats-json': { type: 'string' },
       'system-info-file': { type: 'string' },
@@ -82,6 +88,8 @@ function parseArgv() {
       'flash-attention': { type: 'string', default: 'unknown' },
       mtp: { type: 'string', default: 'unknown' },
       'tensor-split': { type: 'string' },
+      recipe: { type: 'string' },
+      'kv-cache-type': { type: 'string' },
       'power-limit-watts': { type: 'string' },
       'measured-power-draw-watts': { type: 'string' },
       'vram-used-mb': { type: 'string' },
@@ -139,10 +147,42 @@ function main() {
   const scored = repeats.length > 1 ? repeats.slice(1) : repeats; // discard warmup
   const generationTokS = median(scored.map((r) => r.generation_tok_s));
   const promptEvalTokS = median(scored.map((r) => r.prompt_eval_tok_s));
+  const perSlotGenerationTokS = median(scored.map((r) => r.per_slot_generation_tok_s));
+  // Prefer what the load actually sent over what was asked for: the prompt
+  // pool is calibrated to a target token count but lands a few tokens either
+  // side of it, and vLLM's random dataset is only nominally exact either.
+  // --prompt-tokens is the fallback for runners that can't measure it.
+  const promptTokens =
+    median(scored.map((r) => r.prompt_tokens)) ??
+    (v['prompt-tokens'] ? Number(v['prompt-tokens']) : null);
 
-  if (generationTokS === null) {
+  const crashed = v.crashed === '1';
+  // A crashed cell measured nothing, so it carries null rather than 0 — a 0.0
+  // in this column would read as "this configuration runs, very slowly" and
+  // would drag charts and any best-of ranking down with it. A cell that did
+  // NOT crash and still has no number is a bug in the runner, not a result.
+  if (generationTokS === null && !crashed) {
     fail('no usable generation_tok_s value across the given repeats');
   }
+
+  // Which measurement path produced these numbers. It changes what the value
+  // means (see lib/load-llamacpp.js), so it belongs on the row rather than
+  // only inside raw_log.
+  const sources = [...new Set(scored.map((r) => r.source).filter(Boolean))];
+  const promptEvalSources = [
+    ...new Set(scored.map((r) => r.prompt_eval_source).filter(Boolean)),
+  ];
+  const sourceNotes = [];
+  if (sources.length) sourceNotes.push(`throughput source: ${sources.join('/')}`);
+  if (promptEvalSources.length) {
+    sourceNotes.push(`prompt-eval source: ${promptEvalSources.join('/')}`);
+  }
+  if (perSlotGenerationTokS !== null) {
+    sourceNotes.push(`per-slot generation tok/s: ${perSlotGenerationTokS.toFixed(1)}`);
+  }
+  const notes = [v.notes, sourceNotes.length ? `[${sourceNotes.join('; ')}]` : null]
+    .filter(Boolean)
+    .join(' ');
 
   let systemInfo = {};
   if (v['system-info-file'] && fs.existsSync(v['system-info-file'])) {
@@ -163,9 +203,12 @@ function main() {
     quantization: v.quantization,
     concurrency: Number(v.concurrency),
     context_length: Number(v['context-length']),
+    prompt_tokens: promptTokens === null ? null : Math.round(promptTokens),
     flash_attention: v['flash-attention'],
     mtp: v.mtp,
     tensor_split: v['tensor-split'] || null,
+    recipe: v.recipe || null,
+    kv_cache_type: v['kv-cache-type'] || null,
     full_command: v['full-command'],
     os_name: systemInfo.os_name || null,
     kernel_version: systemInfo.kernel_version || null,
@@ -179,20 +222,20 @@ function main() {
     vram_used_mb: v['vram-used-mb'] ? Number(v['vram-used-mb']) : null,
     prompt_eval_tok_s: promptEvalTokS,
     generation_tok_s: generationTokS,
-    crashed: v.crashed === '1' ? 1 : 0,
+    crashed: crashed ? 1 : 0,
     stability_notes: v['stability-notes'] || null,
     raw_log: JSON.stringify(
       {
         note:
           repeats.length > 1
-            ? 'First repeat discarded as warmup; generation_tok_s/prompt_eval_tok_s are the median of the rest.'
+            ? 'First repeat discarded as warmup; generation_tok_s/prompt_eval_tok_s are the median of the rest. generation_tok_s is aggregate throughput (tokens per second of wall time across all slots); per_slot_generation_tok_s, kept per repeat below, is the mean rate of a single slot.'
             : 'Only one repeat was run.',
         repeats,
       },
       null,
       2
     ),
-    notes: v.notes || null,
+    notes: notes || null,
   };
 
   // Sanity check: the row we're about to write must have exactly the keys
@@ -209,8 +252,10 @@ function main() {
   fs.mkdirSync(path.dirname(v['results-file']), { recursive: true });
   fs.appendFileSync(v['results-file'], JSON.stringify(row) + '\n');
   console.log(
-    `Wrote ${v.card}/${v.backend}/${v.runtime} @ concurrency=${v.concurrency}: ` +
-      `${generationTokS.toFixed(1)} tok/s -> ${v['results-file']}`
+    `Wrote ${v.card}/${v.backend}/${v.runtime} @ ctx=${v['context-length']}, ` +
+      `prefill=${row.prompt_tokens ?? 'n/a'}, concurrency=${v.concurrency}: ` +
+      `${generationTokS === null ? 'crashed' : generationTokS.toFixed(1) + ' tok/s'}` +
+      ` -> ${v['results-file']}`
   );
 }
 

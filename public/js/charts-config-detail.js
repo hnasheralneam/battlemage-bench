@@ -25,57 +25,65 @@
     }
   }
 
-  // Line chart: generation tok/s vs. context length, one series per
-  // concurrency level present in the data.
-  const contextData = readChartData('context-chart');
-  if (Array.isArray(contextData) && contextData.length > 0) {
-    const byConcurrency = new Map();
-    contextData.forEach((row) => {
-      if (!byConcurrency.has(row.concurrency)) byConcurrency.set(row.concurrency, []);
-      byConcurrency.get(row.concurrency).push(row);
+  // Both line charts have the same shape — a numeric x-axis, one series per
+  // value of a third column — so they share a builder rather than repeating
+  // the whole Chart config twice. Rows missing either axis value are dropped:
+  // prompt_tokens is null on runs submitted before the prefill axis existed,
+  // and prompt_eval_tok_s is null whenever a submitter didn't measure it.
+  function lineChart(canvasId, opts) {
+    const rows = (readChartData(canvasId) || []).filter(
+      (r) =>
+        typeof r[opts.xKey] === 'number' &&
+        typeof r[opts.yKey] === 'number' &&
+        r[opts.seriesKey] !== null &&
+        r[opts.seriesKey] !== undefined
+    );
+    if (rows.length === 0) return;
+
+    const xValues = [...new Set(rows.map((r) => r[opts.xKey]))].sort((a, b) => a - b);
+
+    const bySeries = new Map();
+    rows.forEach((r) => {
+      const key = r[opts.seriesKey];
+      if (!bySeries.has(key)) bySeries.set(key, new Map());
+      bySeries.get(key).set(r[opts.xKey], r[opts.yKey]);
     });
 
-    const contextLengths = [...new Set(contextData.map((r) => r.context_length))].sort((a, b) => a - b);
-
-    const datasets = [...byConcurrency.entries()]
+    const datasets = [...bySeries.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([concurrency, rows], i) => {
-        rows.sort((a, b) => a.context_length - b.context_length);
-        const byContext = new Map(rows.map((r) => [r.context_length, r.generation_tok_s]));
-        return {
-          label: 'Concurrency ' + concurrency,
-          data: contextLengths.map((cl) => (byContext.has(cl) ? byContext.get(cl) : null)),
-          borderColor: palette[i % palette.length],
-          backgroundColor: palette[i % palette.length],
-          borderWidth: 2,
-          pointRadius: 2.5,
-          spanGaps: true,
-          tension: 0.15,
-        };
-      });
+      .map(([key, byX], i) => ({
+        label: opts.seriesLabel(key),
+        data: xValues.map((x) => (byX.has(x) ? byX.get(x) : null)),
+        borderColor: palette[i % palette.length],
+        backgroundColor: palette[i % palette.length],
+        borderWidth: 2,
+        pointRadius: 2.5,
+        spanGaps: true,
+        tension: 0.15,
+      }));
 
-    new Chart(document.getElementById('context-chart'), {
+    new Chart(document.getElementById(canvasId), {
       type: 'line',
-      data: { labels: contextLengths, datasets },
+      data: { labels: xValues, datasets },
       options: {
         responsive: true,
         plugins: {
           legend: {
             labels: { boxWidth: 10, boxHeight: 10 },
-            // Long "Concurrency N" legend stacks take needed height on
-            // narrow viewports — drop below the chart instead.
+            // Long series-label stacks take needed height on narrow
+            // viewports — drop below the chart instead.
             position: window.innerWidth < 700 ? 'bottom' : 'top',
           },
         },
         scales: {
           x: {
-            title: { display: window.innerWidth >= 700, text: 'Context length (tokens)' },
+            title: { display: window.innerWidth >= 700, text: opts.xTitle },
             grid: { display: false },
             border: { color: grid },
           },
           y: {
             beginAtZero: true,
-            title: { display: true, text: 'Generation tok/s' },
+            title: { display: true, text: opts.yTitle },
             grid: { color: grid },
             border: { display: false },
           },
@@ -84,14 +92,39 @@
     });
   }
 
-  // Bar chart: generation tok/s by quantization (averaged if more than one
-  // run shares the same quant).
+  // Generation throughput against the server's context budget, one series
+  // per concurrency level.
+  lineChart('context-chart', {
+    xKey: 'context_length',
+    yKey: 'generation_tok_s',
+    seriesKey: 'concurrency',
+    seriesLabel: (n) => 'Concurrency ' + n,
+    xTitle: 'Context length (tokens)',
+    yTitle: 'Generation tok/s',
+  });
+
+  // Prefill throughput against prompt length — prefill is the axis that
+  // actually moves prompt_eval_tok_s — split by context level, since a
+  // fixed context budget is what limits how long a prompt can get.
+  lineChart('prefill-chart', {
+    xKey: 'prompt_tokens',
+    yKey: 'prompt_eval_tok_s',
+    seriesKey: 'context_length',
+    seriesLabel: (n) => 'Context ' + Number(n).toLocaleString('en-US'),
+    xTitle: 'Prefill length (prompt tokens)',
+    yTitle: 'Prompt eval tok/s',
+  });
+
+  // Bar chart: generation tok/s by model AND quantization, averaged across the
+  // runs sharing a bar. Model has to be part of the key — averaging a 27B
+  // dense model and a 35B MoE into one "Q4_K_M" bar describes neither.
   const quantData = readChartData('quant-chart');
   if (Array.isArray(quantData) && quantData.length > 0) {
     const byQuant = new Map();
     quantData.forEach((row) => {
-      if (!byQuant.has(row.quantization)) byQuant.set(row.quantization, []);
-      byQuant.get(row.quantization).push(row.generation_tok_s);
+      const key = row.model_name + ' · ' + row.quantization;
+      if (!byQuant.has(key)) byQuant.set(key, []);
+      byQuant.get(key).push(row.generation_tok_s);
     });
     const labels = [...byQuant.keys()];
     const values = labels.map((q) => {
