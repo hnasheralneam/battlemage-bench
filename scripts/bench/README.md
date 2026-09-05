@@ -128,7 +128,7 @@ To sweep one axis on its own, pin the others:
   --ctx-sizes 131072 --concurrency-levels 1 --prefill-lengths 256,1024,4096,8192
 ```
 
-## Running the whole matrix
+## Running the whole matrix — one model
 
 ```bash
 ./run-matrix.sh \
@@ -143,6 +143,18 @@ shared results file.
 
 Add/remove cells (e.g. a future vLLM+Vulkan) by editing `matrix.json`, not
 the scripts.
+
+## Running the whole matrix — all three site models
+
+`run-all.sh` wraps `run-matrix.sh` to run all three site models (see
+`models.example.json`) across every card, card outermost, one results file
+per (card, model). This is the entry point [`REMOTE_AGENT_PROMPT.md`](REMOTE_AGENT_PROMPT.md)
+hands to whoever runs the sweep:
+
+```bash
+cp models.example.json models.json   # fill in real paths — gitignored
+./run-all.sh
+```
 
 ## Getting results onto the site
 
@@ -210,9 +222,12 @@ Which path produced a row is recorded in its `notes`, not just its raw log.
 | `llama-server-launch.sh` | sources a recipe, overrides the swept axes, launches |
 | `vllm-serve-launch.sh` | same, for vLLM |
 | `run-llamacpp.sh` / `run-vllm.sh` | per-runtime sweep orchestrators |
-| `run-matrix.sh` | walks the whole matrix, prompts on card switches |
+| `run-matrix.sh` | walks the whole matrix for one model, prompts on card switches |
+| `run-all.sh` | walks `run-matrix.sh` over every model in `models.json`, card outermost |
+| `models.example.json` | template for `models.json` (gitignored, machine-specific paths) |
 | `lib/load-llamacpp.js` | concurrent-request load generator, calibrated prompt lengths, /metrics parsing |
 | `lib/parse-vllm-result.js` | parses `vllm bench serve` JSON output |
 | `lib/emit-submission.js` | repeats → median → schema-shaped JSONL row |
 | `lib/has-cell.js` | is this cell already in the results file? (`--resume`) |
+| `lib/summarize-results.js` | plain-English per-file summary printed at the end of `run-all.sh` |
 | `submit-jsonl.js` | POSTs a JSONL file's rows to the site's `/submit` |

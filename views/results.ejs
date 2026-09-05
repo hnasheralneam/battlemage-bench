@@ -84,6 +84,7 @@ function sortLink(column, label) {
           <th aria-describedby="gloss-tokw" title="Generation throughput divided by measured GPU power draw. Only present when power was measured."><%- sortLink('tok_s_per_watt', 'tok/s per W') %></th>
           <th aria-describedby="gloss-vram" title="Graphics memory in use during the run. Each card has 32 GB."><%- sortLink('vram_used_mb', 'VRAM') %></th>
           <th aria-describedby="gloss-stability" title="Whether the run completed or crashed. Crashed runs stay published.">Stability</th>
+          <th aria-describedby="gloss-trust" title="Who stands behind this number: measured here, reproduced here, or reported by a contributor.">Trust</th>
           <th aria-describedby="gloss-verified" title="Date this run was reviewed and published."><%- sortLink('verified_at', 'Verified') %></th>
           <th>Flags / command</th>
           <th><span class="visually-hidden">Copy</span></th>
@@ -111,6 +112,7 @@ function sortLink(column, label) {
                 <span class="badge badge-ok">stable</span>
               <% } %>
             </td>
+            <td><%- include('partials/trust-badge', { level: r.verification_level }) %></td>
             <td class="num"><%= fmt.date(r.verified_at || r.created_at) %></td>
             <td>
               <details>
@@ -140,11 +142,13 @@ function sortLink(column, label) {
           </tr>
         <% }) %>
         <% if (rows.length === 0) { %>
-          <tr><td colspan="16">No verified results match these filters.</td></tr>
+          <tr><td colspan="17">No verified results match these filters.</td></tr>
         <% } %>
       </tbody>
     </table>
   </div>
+
+  <%- include('partials/trust-legend') %>
 
   <%- include('partials/glossary') %>
 </section>

@@ -76,6 +76,7 @@
             <th aria-describedby="gloss-tokw" title="Generation throughput divided by measured GPU power draw. Only present when power was measured.">tok/s per W</th>
             <th aria-describedby="gloss-vram" title="Graphics memory in use during the run. Each card has 32 GB.">VRAM</th>
             <th aria-describedby="gloss-stability" title="Whether the run completed or crashed. Crashed runs stay published.">Stability</th>
+            <th aria-describedby="gloss-trust" title="Who stands behind this number: measured here, reproduced here, or reported by a contributor.">Trust</th>
             <th>Flags / log</th>
             <th><span class="visually-hidden">Copy</span></th>
           </tr>
@@ -99,6 +100,7 @@
                   <span class="badge badge-ok">stable</span>
                 <% } %>
               </td>
+              <td><%- include('partials/trust-badge', { level: r.verification_level }) %></td>
               <td>
                 <details>
                   <summary>show</summary>
@@ -130,6 +132,8 @@
         </tbody>
       </table>
     </div>
+
+    <%- include('partials/trust-legend') %>
 
     <%- include('partials/glossary') %>
   <% } %>

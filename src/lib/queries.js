@@ -191,7 +191,9 @@ function backendComparison() {
          v.prompt_eval_tok_s AS vulkan_prompt_eval,
          s.prompt_eval_tok_s AS sycl_prompt_eval,
          v.crashed           AS vulkan_crashed,
-         s.crashed           AS sycl_crashed
+         s.crashed           AS sycl_crashed,
+         v.verification_level AS vulkan_level,
+         s.verification_level AS sycl_level
        FROM best v
        JOIN best s ON ${joinOn}
        WHERE v.backend = 'Vulkan' AND s.backend = 'SYCL'

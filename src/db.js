@@ -133,6 +133,23 @@ const migrations = [
       db.exec('ALTER TABLE submissions ADD COLUMN kv_cache_type TEXT');
     },
   },
+  {
+    version: 5,
+    up: () => {
+      // Who stands behind a published number. Every verified row rendered
+      // identically before this, so a run measured on the maintainer's own
+      // bench was indistinguishable from one a stranger submitted and nobody
+      // re-ran. Defaults to the weakest claim: anything already in the table
+      // was reviewed but not reproduced, and saying so is the honest default.
+      // Admin-set only — see ADMIN_EDITABLE_COLUMNS in lib/constants.js.
+      db.exec(`
+        ALTER TABLE submissions ADD COLUMN verification_level TEXT
+          NOT NULL DEFAULT 'community-reported'
+          CHECK (verification_level IN
+            ('maintainer-measured','reproduced','community-reported'))
+      `);
+    },
+  },
 ];
 
 function migrate() {

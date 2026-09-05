@@ -55,6 +55,7 @@
             <th class="num" title="How far ahead SYCL is on generation throughput. Negative means Vulkan won.">Δ gen</th>
             <th class="num" aria-describedby="gloss-prompt-eval" title="Prefill throughput on the Vulkan backend.">Vulkan prompt eval</th>
             <th class="num" aria-describedby="gloss-prompt-eval" title="Prefill throughput on the SYCL backend.">SYCL prompt eval</th>
+            <th aria-describedby="gloss-trust" title="The weaker of the two sides — a pair is only as trustworthy as the run behind it.">Trust</th>
           </tr>
         </thead>
         <tbody>
@@ -83,6 +84,7 @@
               </td>
               <td class="num<%= fmt.missingClass(p.vulkan_prompt_eval) %>"><%= fmt.num(p.vulkan_prompt_eval) %></td>
               <td class="num<%= fmt.missingClass(p.sycl_prompt_eval) %>"><%= fmt.num(p.sycl_prompt_eval) %></td>
+              <td><%- include('partials/trust-badge', { level: p.level }) %></td>
             </tr>
           <% }) %>
         </tbody>
@@ -156,6 +158,8 @@
     </div>
   <% } %>
 </section>
+
+<%- include('partials/trust-legend') %>
 
 <%- include('partials/glossary') %>
 

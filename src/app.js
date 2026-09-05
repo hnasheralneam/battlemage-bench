@@ -24,8 +24,13 @@ app.use((req, res, next) => {
 // Make formatting helpers available in every EJS template without an
 // explicit require in each route.
 const fmt = require('./lib/format');
+const { VERIFICATION_LEVELS, VERIFICATION_LABELS } = require('./lib/constants');
 app.use((req, res, next) => {
   res.locals.fmt = fmt;
+  // The trust badge and its legend appear on four different tables, so the
+  // vocabulary is a global rather than something each route remembers to pass.
+  res.locals.VERIFICATION_LEVELS = VERIFICATION_LEVELS;
+  res.locals.VERIFICATION_LABELS = VERIFICATION_LABELS;
   next();
 });
 // Lets the nav partial highlight the current section without every route

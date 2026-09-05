@@ -92,6 +92,7 @@
           <th>tok/s per W</th>
           <th>VRAM used</th>
           <th>Stability</th>
+          <th>Trust</th>
           <th></th>
         </tr>
       </thead>
@@ -107,11 +108,12 @@
             <td class="num<%= fmt.missingClass(r.tok_s_per_watt) %>"><%= fmt.num(r.tok_s_per_watt, 2) %></td>
             <td class="num<%= fmt.missingClass(r.vram_used_mb) %>"><%= fmt.unit(r.vram_used_mb, 'MB') %></td>
             <td><span class="badge badge-ok">stable</span></td>
+            <td><%- include('partials/trust-badge', { level: r.verification_level }) %></td>
             <td><a href="/configs/<%= r.card %>/<%= r.backend %>/<%= r.runtime %>">Details →</a></td>
           </tr>
         <% }) %>
         <% if (bestRuns.length === 0) { %>
-          <tr><td colspan="10">No verified results yet.</td></tr>
+          <tr><td colspan="11">No verified results yet.</td></tr>
         <% } %>
       </tbody>
     </table>

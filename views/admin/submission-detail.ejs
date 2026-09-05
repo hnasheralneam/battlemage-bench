@@ -120,6 +120,7 @@ function field(name, label, opts) {
         <%- field('stability_notes', 'Stability notes', { type: 'textarea', rows: 2 }) %>
         <%- field('raw_log', 'Raw log output', { type: 'textarea', rows: 8 }) %>
         <%- field('notes', 'Submitter notes', { type: 'textarea', rows: 2 }) %>
+        <%- field('verification_level', 'Verification level (who stands behind this number)', { type: 'select', options: VERIFICATION_LEVELS }) %>
         <%- field('admin_notes', 'Admin notes (internal, never shown publicly)', { type: 'textarea', rows: 2 }) %>
       </fieldset>
     </div>

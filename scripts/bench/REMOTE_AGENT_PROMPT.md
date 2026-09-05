@@ -27,8 +27,10 @@ The short version of how the runner works:
   warmup and the published figure is the median of the remaining three.
 - Every flag except those axes comes from a named recipe, so each row records
   which recipe produced it and a reader can reproduce it exactly.
-- `run-matrix.sh` runs every applicable cell in one go, pausing before each
-  card switch to have you confirm the right physical GPU is active.
+- `run-matrix.sh` runs every applicable cell in one go, for one model, pausing
+  before each card switch to have you confirm the right physical GPU is
+  active. `run-all.sh` wraps it to run all three site models in the right
+  order — that's the one you'll actually invoke; see "Running the sweep".
 - Nothing auto-detects the GPU or scans for models. You supply real paths, and
   you are responsible for the card label being true.
 
@@ -97,29 +99,63 @@ constant for a given runtime across the whole sweep.
 
 ## Running the sweep
 
-One command per model:
+Copy `scripts/bench/models.example.json` to `scripts/bench/models.json` and
+fill in the three real model paths/quants (confirmed against the operator per
+the preflight above — this file is gitignored, it's machine-specific). Then
+one command runs the whole thing:
 
 ```bash
-./run-matrix.sh --card <CARD> \
-  --llamacpp-model-path <path/to/model.gguf> \
-  --llamacpp-model-name "Qwen3.8-27B" --llamacpp-quantization Q4_K_M \
-  --vllm-model <path-or-hf-id> \
-  --vllm-model-name "Qwen3.8-27B" --vllm-quantization AWQ-4bit \
-  --results-file results/qwen3.8-27b.jsonl
+./run-all.sh
 ```
 
-Then repeat with the other two models and their own `--results-file`.
+This walks all three models across every card in `matrix.json`, **card
+outermost, largest context first**, into one results file per (card, model)
+under `results/`. Both are deliberate:
 
-Omit `--card` only if every card in `matrix.json` is physically present; the
-script will pause and ask you to confirm before each card switch. If only one
-card is installed, always pass `--card`.
+- **Card is the outermost loop.** Confirming or physically swapping a card is
+  a blocking manual step. Running model-by-model across both cards would hit
+  it three times; finishing a card first hits it once. It also keeps one model
+  in the page cache across all three of its runtime×backend combos, so its 15
+  reloads come from RAM rather than disk.
+- **Largest context first** (`131072,65536,8192`, `run-all.sh`'s default). If
+  a model doesn't fit at 128K on this card, that fails on the very first
+  server start rather than two-thirds of the way through the sweep. The axis
+  order has no effect on the results, only on how early you find out.
+
+It prompts once per card (physically swap or set the device selector, then
+press Enter) and once more per model inside that as a lightweight
+re-confirmation — that second one is not asking you to swap again, just to
+double check the card didn't drift. At the end it prints a plain-English
+summary and every results file already wrapped for the handoff below — see
+"Handing the results back".
+
+Pass `--card B70` to restrict to one card (do this if only one is physically
+installed; `run-all.sh` will otherwise expect to pause for both). `--resume`
+works the same way it does everywhere else in this runner — see below.
+
+If you need one model or one runtime in isolation (re-running a single failed
+combo, say), drop to `run-matrix.sh` / `run-llamacpp.sh` / `run-vllm.sh`
+directly — see `README.md`. `run-all.sh` is a thin wrapper around
+`run-matrix.sh`, not a replacement for it.
+
+### Why llama.cpp is slower to sweep than vLLM
+
+Expect the llama.cpp combos to spend far more time loading. `--parallel` is a
+`llama-server` launch flag, so each concurrency level needs its own server —
+15 starts per combo (3 contexts × 5 concurrency levels). vLLM's
+`--max-concurrency` is a client-side flag on `vllm bench serve`, so its whole
+concurrency sweep runs against one server — 3 starts per combo. That is
+inherent to the two runtimes, not a scheduling mistake; don't try to
+"optimise" it by editing the runner.
 
 ### If it stops partway through
 
-Re-run the identical command with `--resume` added, pointed at the same
-`--results-file`. Cells already recorded there are skipped, including their
-model load, which is most of the cost. Do not start a fresh results file to
-"be safe" — that produces duplicate rows for the cells that did complete.
+Re-run `./run-all.sh --resume` (same `models.json`, same everything else).
+It rebuilds the same `results/<card>-<model>.jsonl` paths deterministically
+from the card and model name, and `--resume` skips cells already recorded in
+each, including their model load, which is most of the cost. Do not rename or
+move a results file to "start fresh" — that produces duplicate rows for the
+cells that did complete, and breaks `run-all.sh`'s ability to find it again.
 
 ### Stop conditions
 
@@ -143,22 +179,28 @@ A single crashed cell is not a stop condition — the runner records it as
 
 ## Handing the results back
 
-For each model's results file:
+`run-all.sh` does most of this for you at the end of the run: a per-file
+summary (row count, crashed count, tok/s range per card/backend/runtime) via
+`lib/summarize-results.js`, followed by every results file already wrapped
+like this so it can be extracted mechanically:
 
-- Print the full contents wrapped exactly like this so it can be extracted
-  mechanically:
+```
+===BEGIN RESULTS FILE: results/b70-qwen3.8-27b.jsonl===
+<full file contents, one JSON object per line>
+===END RESULTS FILE===
+```
 
-  ```
-  ===BEGIN RESULTS JSONL===
-  <full file contents, one JSON object per line>
-  ===END RESULTS JSONL===
-  ```
+Paste that whole block back verbatim — don't retype or reformat it. On top of it, add:
 
-- Give a short plain-English summary: which cells ran clean, which came back
-  `crashed=1` and why, the rough tok/s range per runtime and backend, and
-  anything that surprised you.
-- Report the preflight output alongside it, so the versions the rows claim can
-  be checked against what was actually installed.
+- A short plain-English summary in your own words: which cells ran clean,
+  which came back `crashed=1` and why, anything that surprised you, and
+  anything `run-all.sh` flagged as a non-zero exit needing a look.
+- The preflight output from earlier, so the versions the rows claim can be
+  checked against what was actually installed.
+
+If you ran something outside `run-all.sh` (a single re-run via
+`run-matrix.sh`/`run-llamacpp.sh`/`run-vllm.sh` directly), wrap that file's
+contents the same way by hand.
 
 If — and only if — you and the operator both know this machine can reach the
 site host over the network, you can submit directly to the pending queue

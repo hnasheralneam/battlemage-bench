@@ -4,7 +4,13 @@ const bcrypt = require('bcryptjs');
 const config = require('../config');
 const requireAdmin = require('../middleware/requireAdmin');
 const { getPending, getById, setStatus, updateSubmission } = require('../lib/queries');
-const { CARDS, BACKENDS, RUNTIMES, TRISTATE } = require('../lib/constants');
+const {
+  CARDS,
+  BACKENDS,
+  RUNTIMES,
+  TRISTATE,
+  VERIFICATION_LEVELS,
+} = require('../lib/constants');
 
 // Simple in-memory brute-force friction: a single shared admin password is
 // reachable from the public internet, so a few lines of per-IP lockout is
@@ -122,7 +128,19 @@ router.post('/submissions/:id/edit', (req, res) => {
       errors,
     });
   }
-  updateSubmission(req.params.id, { ...data, admin_notes: req.body.admin_notes || null });
+  // verification_level and admin_notes are admin-only, so they bypass
+  // validateSubmission (which covers submitter fields) and are applied here.
+  // The level is checked against the whitelist rather than trusted to the
+  // form: an out-of-range value would otherwise hit the column's CHECK
+  // constraint and surface as a 500.
+  const level = VERIFICATION_LEVELS.includes(req.body.verification_level)
+    ? req.body.verification_level
+    : undefined;
+  updateSubmission(req.params.id, {
+    ...data,
+    admin_notes: req.body.admin_notes || null,
+    ...(level ? { verification_level: level } : {}),
+  });
   res.redirect(`/admin/submissions/${req.params.id}`);
 });
 

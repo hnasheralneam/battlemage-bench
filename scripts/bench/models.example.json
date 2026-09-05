@@ -1,0 +1,26 @@
+{
+  "//": "Copy this to models.json (gitignored — paths are machine-specific) and fill in real paths. run-all.sh reads models.json by default.",
+  "models": [
+    {
+      "name": "Qwen3.8-27B",
+      "llamacpp_model_path": "/path/to/qwen3.8-27b-Q4_K_M.gguf",
+      "llamacpp_quantization": "Q4_K_M",
+      "vllm_model": "/path/or/hf-id/qwen3.8-27b-awq",
+      "vllm_quantization": "AWQ-4bit"
+    },
+    {
+      "name": "Qwen3.6-35B-A3B",
+      "llamacpp_model_path": "/path/to/qwen3.6-35b-a3b-Q4_K_M.gguf",
+      "llamacpp_quantization": "Q4_K_M",
+      "vllm_model": "/path/or/hf-id/qwen3.6-35b-a3b-awq",
+      "vllm_quantization": "AWQ-4bit"
+    },
+    {
+      "name": "Muse-Glimmer-30B",
+      "llamacpp_model_path": "/path/to/muse-glimmer-30b-Q4_K_M.gguf",
+      "llamacpp_quantization": "Q4_K_M",
+      "vllm_model": "/path/or/hf-id/muse-glimmer-30b-awq",
+      "vllm_quantization": "AWQ-4bit"
+    }
+  ]
+}

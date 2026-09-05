@@ -1,0 +1,9 @@
+<%
+// Who stands behind one published result. Included with `level` set to the
+// row's verification_level; see VERIFICATION_LEVELS in src/lib/constants.js.
+const trustText = {
+  'maintainer-measured': 'measured here',
+  reproduced: 'reproduced',
+  'community-reported': 'reported',
+};
+%><span class="badge badge-trust-<%= level %>" title="<%= VERIFICATION_LABELS[level] %>"><%= trustText[level] || level %></span>

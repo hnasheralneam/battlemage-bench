@@ -3,6 +3,22 @@ const BACKENDS = ['Vulkan', 'SYCL'];
 const RUNTIMES = ['llama.cpp', 'vLLM'];
 const TRISTATE = ['on', 'off', 'unknown'];
 
+// Who stands behind a published result, weakest claim last. Deliberately
+// absent from SUBMISSION_INPUT_COLUMNS: a submitter must never be able to
+// declare their own trust level, so this field exists only on the admin form.
+const VERIFICATION_LEVELS = [
+  'maintainer-measured',
+  'reproduced',
+  'community-reported',
+];
+
+// Short gloss per level, rendered as the legend under the results tables.
+const VERIFICATION_LABELS = {
+  'maintainer-measured': 'Run on this project\u2019s own hardware.',
+  reproduced: 'Submitted, then re-run here with a matching result.',
+  'community-reported': 'Submitted and reviewed, but not re-run here.',
+};
+
 // The models this site's own sweeps run. model_name stays free text in the
 // schema — a submission on some other model is still welcome and still
 // publishable — but these are what the benchmark runner is pointed at, what
@@ -130,7 +146,11 @@ const SUBMISSION_INPUT_COLUMNS = [
 ];
 
 // Columns an admin may edit on a pending/rejected row before deciding.
-const ADMIN_EDITABLE_COLUMNS = [...SUBMISSION_INPUT_COLUMNS, 'admin_notes'];
+const ADMIN_EDITABLE_COLUMNS = [
+  ...SUBMISSION_INPUT_COLUMNS,
+  'admin_notes',
+  'verification_level',
+];
 
 module.exports = {
   CARDS,
@@ -139,6 +159,8 @@ module.exports = {
   BACKENDS,
   RUNTIMES,
   TRISTATE,
+  VERIFICATION_LEVELS,
+  VERIFICATION_LABELS,
   FILTERABLE,
   LIKE_FILTERS,
   SORTABLE,

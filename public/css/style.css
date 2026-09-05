@@ -392,17 +392,17 @@ h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
 .section-note { color: var(--text-muted); margin-top: 0; font-size: 0.95rem; max-width: 70ch; }
 
 /* ---- Shared panel surface: every self-contained block shares one
-       gradient-washed, hairline-bordered look so components can't drift
+       gradient-washed, crisply-bordered look so components can't drift
        apart. The border gradient runs inverse to the surface gradient. ---- */
 .filter-form, .agent-box, .chart-wrap, .stat-card, .link-card,
 .table-scroll, .empty-state, fieldset, .feature-card,
 .path-card, .form-step, .glossary, .faq-item {
-  --panel-border-a: var(--border);
-  --panel-border-b: color-mix(in srgb, var(--accent) 18%, var(--border));
+  --panel-border-a: color-mix(in srgb, var(--accent-strong) 16%, var(--border-strong));
+  --panel-border-b: color-mix(in srgb, var(--accent-strong) 30%, var(--border-strong));
   background:
     var(--grad-surface) padding-box,
     linear-gradient(0deg, var(--panel-border-a), var(--panel-border-b)) border-box;
-  border: 1px solid transparent;
+  border: 1.25px solid transparent;
   border-radius: var(--radius-md);
 }
 
@@ -410,7 +410,7 @@ h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
    paper over the dash gaps) — gradient surface, flat dashed hairline. */
 .empty-state {
   background: var(--grad-surface);
-  border: 1px dashed var(--border);
+  border: 1.25px dashed var(--panel-border-b);
 }
 
 /* ---- Tables ---- */
@@ -498,13 +498,44 @@ th a:hover { color: var(--accent); }
   white-space: nowrap;
 }
 .badge-ok { background: var(--ok-bg); color: var(--ok-text); }
+
+/* Trust levels, weakest to strongest. Weight rather than hue carries the
+   ranking: these sit next to the ok/warn stability badges, and a third and
+   fourth colour there would read as another pass/fail axis. */
+.badge-trust-community-reported {
+  background: var(--bg-alt);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.badge-trust-reproduced {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.badge-trust-maintainer-measured {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border: 1px solid var(--accent);
+}
+
+/* Legend under each table: the three levels and what they mean. */
+.trust-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  list-style: none;
+  margin: 0.9rem 0 0;
+  padding: 0;
+}
+.trust-legend li { display: flex; align-items: center; gap: 0.5rem; }
+.trust-legend span { font-size: 0.82rem; color: var(--text-muted); }
 .badge-warn { background: var(--warn-bg); color: var(--warn-text); }
 
 /* ---- Code blocks ---- */
 
 .command-block, .log-block {
   background: var(--grad-code);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 0.6rem 0.8rem;
   font-family: var(--font-mono);
@@ -672,8 +703,8 @@ th[aria-describedby]:hover { text-decoration-color: var(--accent); }
 }
 .link-card:hover {
   transform: translateY(-2px);
-  --panel-border-a: color-mix(in srgb, var(--accent) 55%, var(--border));
-  --panel-border-b: color-mix(in srgb, var(--accent) 55%, var(--border));
+  --panel-border-a: color-mix(in srgb, var(--accent) 62%, var(--border-strong));
+  --panel-border-b: color-mix(in srgb, var(--accent) 62%, var(--border-strong));
   box-shadow: var(--shadow-md);
 }
 .link-card h3 { margin: 0 0 0.4rem; font-size: 1rem; }
@@ -752,12 +783,12 @@ th[aria-describedby]:hover { text-decoration-color: var(--accent); }
 
 .flash {
   padding: 0.65rem 0.95rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   margin-bottom: 1.25rem;
   font-size: 0.9rem;
 }
-.flash-info { background: var(--surface); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.flash-info { background: var(--surface); border-color: color-mix(in srgb, var(--accent) 40%, var(--border-strong)); }
 .flash-success { background: var(--ok-bg); color: var(--ok-text); border-color: color-mix(in srgb, var(--ok-text) 35%, transparent); }
 .flash-error { background: var(--warn-bg); color: var(--warn-text); border-color: color-mix(in srgb, var(--warn-text) 35%, transparent); }
 
@@ -1047,8 +1078,8 @@ legend {
 .path-card p { margin: 0; color: var(--text-muted); font-size: 0.88rem; line-height: 1.6; }
 .path-card:hover {
   transform: translateY(-2px);
-  --panel-border-a: color-mix(in srgb, var(--accent) 55%, var(--border));
-  --panel-border-b: color-mix(in srgb, var(--accent) 55%, var(--border));
+  --panel-border-a: color-mix(in srgb, var(--accent) 62%, var(--border-strong));
+  --panel-border-b: color-mix(in srgb, var(--accent) 62%, var(--border-strong));
   box-shadow: var(--shadow-md);
 }
 .path-card:hover .link-card-arrow { color: var(--accent); transform: translateX(3px); }

@@ -1,0 +1,8 @@
+<ul class="trust-legend">
+  <% VERIFICATION_LEVELS.forEach(function(level) { %>
+    <li>
+      <%- include('trust-badge', { level: level }) %>
+      <span><%= VERIFICATION_LABELS[level] %></span>
+    </li>
+  <% }) %>
+</ul>

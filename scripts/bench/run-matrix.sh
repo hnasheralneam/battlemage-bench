@@ -125,7 +125,13 @@ if [[ -z "$CELLS" ]]; then
 fi
 
 LAST_CARD=""
-while IFS='|' read -r CARD BACKEND RUNTIME; do
+# Cells are read from fd 3, not stdin: the card-switch confirmation below
+# does `read -rp` on stdin, and if the loop's own `read` were also on stdin
+# they'd share one cursor — the confirmation prompt would silently consume
+# the next cell line as its "press enter" input. That happened here before:
+# every non-first cell of a card switch (i.e. cell 2 of every card, since the
+# switch always fires on a card's first cell) vanished with no error.
+while IFS='|' read -r CARD BACKEND RUNTIME <&3; do
   [[ -z "$CARD" ]] && continue
 
   if [[ "$CARD" != "$LAST_CARD" ]]; then
@@ -169,7 +175,7 @@ while IFS='|' read -r CARD BACKEND RUNTIME; do
       echo "Unknown runtime in matrix.json: $RUNTIME — skipping"
       ;;
   esac
-done <<< "$CELLS"
+done 3<<< "$CELLS"
 
 echo ""
 echo "Matrix run complete. All results in $RESULTS_FILE"
