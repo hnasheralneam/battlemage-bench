@@ -19,8 +19,10 @@ const META_KEYS = {
 
 // Ordered worst-context-to-best so the three always render in a stable,
 // meaningful order rather than alphabetically (balanced, context,
-// performance), which reads as arbitrary.
-const PROFILE_ORDER = ['performance', 'balanced', 'context'];
+// performance), which reads as arbitrary. 'mtp' sorts last: it isn't a
+// fourth context/throughput tradeoff like the other three, it's the
+// balanced profile plus speculative decoding — an add-on, not a peer.
+const PROFILE_ORDER = ['performance', 'balanced', 'context', 'mtp'];
 
 function parseMeta(source) {
   const meta = {};

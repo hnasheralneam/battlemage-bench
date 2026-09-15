@@ -39,15 +39,17 @@ const MODELS = [
     architecture: '27B dense',
     note: 'The reference model. Dense, so throughput scales with the full parameter count.',
     llamacppQuant: 'Q4_K_M',
-    vllmQuant: 'AWQ-4bit',
+    // Matches scripts/bench/models.json, the actual sweep config — not a
+    // placeholder. No plain AWQ build of this model was available; GPTQ was.
+    vllmQuant: 'GPTQ-Int4',
   },
   {
     name: 'Qwen3.6-35B-A3B',
     vendor: 'Alibaba',
     architecture: '35B MoE / ~3B active',
     note: 'Same vendor as the reference, different architecture — only ~3B parameters are active per token, which is the main way to get large-model quality out of 32 GB.',
-    llamacppQuant: 'Q4_K_M',
-    vllmQuant: 'AWQ-4bit',
+    llamacppQuant: 'UD-Q4_K_M',
+    vllmQuant: 'AutoRound-Int4',
   },
   {
     name: 'Muse-Glimmer-30B',
@@ -55,7 +57,13 @@ const MODELS = [
     architecture: '30B dense',
     note: 'Same shape as the reference, different vendor and tokenizer — the control for whether a result is about the card or about Qwen.',
     llamacppQuant: 'Q4_K_M',
-    vllmQuant: 'AWQ-4bit',
+    // RedHatAI/Muse-Glimmer-30B-INT4 — the FP8-block quant from the same
+    // publisher was tried first but doesn't fit: an FP8 (8-bit) dense ~30B
+    // model's raw weights alone are ~29.6GB, which OOMs during weight
+    // loading on a 32GB card with no room left for lm_head/KV-cache (see
+    // HANDOFF-PLAN.md). INT4 (~20.8GB loaded) was smoke-tested and confirmed
+    // working on this box's vLLM/XPU stack before being added here.
+    vllmQuant: 'INT4',
   },
 ];
 

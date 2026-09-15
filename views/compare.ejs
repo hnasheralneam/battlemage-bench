@@ -24,19 +24,27 @@
     </p>
   <% } else { %>
     <p class="section-note">
-      <% if (summary.syclWins > summary.vulkanWins) { %>
-        SYCL is faster in <%= summary.syclWins %> of <%= summary.total %> matched pair<%= summary.total === 1 ? '' : 's' %>.
-      <% } else if (summary.vulkanWins > summary.syclWins) { %>
-        Vulkan is faster in <%= summary.vulkanWins %> of <%= summary.total %> matched pair<%= summary.total === 1 ? '' : 's' %>.
+      <% if (summary.comparableTotal === 0) { %>
+        <%= summary.total %> matched pair<%= summary.total === 1 ? '' : 's' %> so far, but every one has a crashed
+        side — there's no pair yet with a real number on both backends to compare.
       <% } else { %>
-        Evenly split across <%= summary.total %> matched pair<%= summary.total === 1 ? '' : 's' %>.
+        <% if (summary.syclWins > summary.vulkanWins) { %>
+          SYCL is faster in <%= summary.syclWins %> of <%= summary.comparableTotal %> comparable pair<%= summary.comparableTotal === 1 ? '' : 's' %>.
+        <% } else if (summary.vulkanWins > summary.syclWins) { %>
+          Vulkan is faster in <%= summary.vulkanWins %> of <%= summary.comparableTotal %> comparable pair<%= summary.comparableTotal === 1 ? '' : 's' %>.
+        <% } else { %>
+          Evenly split across <%= summary.comparableTotal %> comparable pair<%= summary.comparableTotal === 1 ? '' : 's' %>.
+        <% } %>
+        <% if (summary.medianDeltaPct !== null) { %>
+          Median difference in generation throughput:
+          <strong><%= fmt.num(Math.abs(summary.medianDeltaPct)) %>%</strong>
+          in <%= summary.medianDeltaPct >= 0 ? "SYCL's" : "Vulkan's" %> favour.
+        <% } %>
+        <% if (summary.comparableTotal < summary.total) { %>
+          (<%= summary.total - summary.comparableTotal %> more matched pair<%= summary.total - summary.comparableTotal === 1 ? '' : 's' %> exist but crashed on one side — excluded from these numbers, shown below as unstable.)
+        <% } %>
+        With this few results, read it as a direction rather than a verdict.
       <% } %>
-      <% if (summary.medianDeltaPct !== null) { %>
-        Median difference in generation throughput:
-        <strong><%= fmt.num(Math.abs(summary.medianDeltaPct)) %>%</strong>
-        in <%= summary.medianDeltaPct >= 0 ? "SYCL's" : "Vulkan's" %> favour.
-      <% } %>
-      With this few results, read it as a direction rather than a verdict.
     </p>
 
     <div class="table-scroll">

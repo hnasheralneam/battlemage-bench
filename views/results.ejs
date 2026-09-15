@@ -115,8 +115,8 @@ function sortLink(column, label) {
             <td><%- include('partials/trust-badge', { level: r.verification_level }) %></td>
             <td class="num"><%= fmt.date(r.verified_at || r.created_at) %></td>
             <td>
-              <details>
-                <summary>show</summary>
+              <button type="button" class="row-details-trigger" aria-expanded="false" aria-haspopup="dialog">show</button>
+              <div class="row-details-source" hidden>
                 <pre class="command-block"><%= r.full_command %></pre>
                 <dl class="run-meta">
                   <dt>OS</dt><dd class="<%= fmt.missingClass(r.os_name) %>"><%= fmt.text(r.os_name) %></dd>
@@ -136,7 +136,7 @@ function sortLink(column, label) {
                     <% } %>
                   </dd>
                 </dl>
-              </details>
+              </div>
             </td>
             <td><button type="button" class="copy-row-btn" aria-label="Copy this result as Markdown" title="Copy as Markdown" data-copy="<%= fmt.markdownRow(r) %>">⎘</button></td>
           </tr>

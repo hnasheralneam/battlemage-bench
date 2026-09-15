@@ -20,22 +20,34 @@ function median(values) {
 }
 
 router.get('/', (req, res) => {
-  const pairs = backendComparison().map((p) => ({
-    ...p,
-    // Percentage SYCL is ahead of Vulkan on generation throughput; negative
-    // means Vulkan won. Guarded against a zero denominator.
-    deltaPct: p.vulkan_gen ? ((p.sycl_gen - p.vulkan_gen) / p.vulkan_gen) * 100 : null,
+  const pairs = backendComparison().map((p) => {
     // A pair where either side crashed isn't a clean win — the table says so
-    // rather than silently ranking an unstable run above a stable one.
-    unstable: Boolean(p.vulkan_crashed || p.sycl_crashed),
-    level: weakerLevel(p.vulkan_level, p.sycl_level),
-  }));
+    // rather than silently ranking an unstable run above a stable one. It
+    // also means there is no real number on that side: `generation_tok_s`
+    // is SQL NULL for a crashed run, and plain arithmetic on a missing
+    // value (`null - x`) silently coerces to 0 in JS rather than throwing,
+    // which used to read as "SYCL scored zero" — a fabricated -100%
+    // delta — instead of "not measured". Both sides have to have an actual
+    // number for a comparison to mean anything.
+    const comparable = p.vulkan_gen != null && p.sycl_gen != null;
+    return {
+      ...p,
+      // Percentage SYCL is ahead of Vulkan on generation throughput;
+      // negative means Vulkan won.
+      deltaPct: comparable ? ((p.sycl_gen - p.vulkan_gen) / p.vulkan_gen) * 100 : null,
+      comparable,
+      unstable: Boolean(p.vulkan_crashed || p.sycl_crashed),
+      level: weakerLevel(p.vulkan_level, p.sycl_level),
+    };
+  });
 
+  const comparablePairs = pairs.filter((p) => p.comparable);
   const summary = {
     total: pairs.length,
-    syclWins: pairs.filter((p) => p.sycl_gen > p.vulkan_gen).length,
-    vulkanWins: pairs.filter((p) => p.vulkan_gen > p.sycl_gen).length,
-    medianDeltaPct: median(pairs.filter((p) => p.deltaPct !== null).map((p) => p.deltaPct)),
+    comparableTotal: comparablePairs.length,
+    syclWins: comparablePairs.filter((p) => p.sycl_gen > p.vulkan_gen).length,
+    vulkanWins: comparablePairs.filter((p) => p.vulkan_gen > p.sycl_gen).length,
+    medianDeltaPct: median(comparablePairs.map((p) => p.deltaPct)),
   };
 
   res.render('compare', {
