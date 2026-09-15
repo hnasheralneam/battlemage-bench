@@ -5,6 +5,8 @@
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var palette = ['var(--accent)', 'var(--blob-2)', 'var(--blob-3)'];
   var resizeTimer;
+  var layers = [];
+  var ticking = false;
 
   function rand(min, max) {
     return min + Math.random() * (max - min);
@@ -35,8 +37,16 @@
     var height = pageHeight();
     var count = Math.max(6, Math.min(16, Math.round(height / 600)));
     var frag = document.createDocumentFragment();
+    layers = [];
 
     for (var i = 0; i < count; i++) {
+      // The layer carries position/size; the blob inside it carries the
+      // color/shape and the ambient drift animation. Splitting them means
+      // the scroll-driven parallax transform (on the layer) never fights
+      // with the drift keyframes' transform (on the blob).
+      var layer = document.createElement('span');
+      layer.className = 'blob-layer';
+
       var el = document.createElement('span');
       var outline = Math.random() < 0.5;
       el.className = 'blob ' + (outline ? 'blob-outline' : 'blob-filled');
@@ -47,10 +57,11 @@
       var left = rand(-10, 88);
       var color = palette[Math.floor(Math.random() * palette.length)];
 
-      el.style.width = size + 'vmax';
-      el.style.height = size + 'vmax';
-      el.style.top = top + '%';
-      el.style.left = left + '%';
+      layer.style.width = size + 'vmax';
+      layer.style.height = size + 'vmax';
+      layer.style.top = top + '%';
+      layer.style.left = left + '%';
+
       if (outline) {
         el.style.borderColor = color;
       } else {
@@ -63,13 +74,41 @@
         el.style.setProperty('--s', rand(0.88, 1.18).toFixed(2));
         el.style.animationDuration = rand(40, 72).toFixed(0) + 's';
         el.style.animationDelay = '-' + rand(0, 40).toFixed(0) + 's';
+
+        // Smaller outline rings read as "further back" and drift slower;
+        // bigger filled blobs sit closer and move a bit more per scroll px.
+        var depth = outline ? rand(0.16, 0.34) : rand(0.32, 0.58);
+        layers.push({ el: layer, depth: depth });
       }
 
-      frag.appendChild(el);
+      layer.appendChild(el);
+      frag.appendChild(layer);
     }
 
     container.innerHTML = '';
     container.appendChild(frag);
+    updateParallax();
+  }
+
+  function updateParallax() {
+    if (reduceMotion || !layers.length) return;
+    var y = window.scrollY || window.pageYOffset || 0;
+    for (var i = 0; i < layers.length; i++) {
+      // Positive offset counteracts part of the scroll, so the blob (sat
+      // behind the content, z-index -1) lags and reads as further away
+      // instead of racing past the foreground.
+      var offset = (y * layers[i].depth).toFixed(1);
+      layers[i].el.style.transform = 'translate3d(0, ' + offset + 'px, 0)';
+    }
+  }
+
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () {
+      updateParallax();
+      ticking = false;
+    });
   }
 
   function scheduleResize() {
@@ -82,6 +121,10 @@
   // Fonts/images can still change document height after the initial layout.
   window.addEventListener('load', resizeContainer);
   window.addEventListener('resize', scheduleResize);
+
+  if (!reduceMotion) {
+    window.addEventListener('scroll', onScroll, { passive: true });
+  }
 
   if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(scheduleResize).observe(document.body);

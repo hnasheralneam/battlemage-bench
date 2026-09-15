@@ -152,8 +152,13 @@ h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
   overflow: hidden;
   pointer-events: none;
 }
+.blob-layer {
+  position: absolute;
+  will-change: transform;
+}
 .blob {
   position: absolute;
+  inset: 0;
   border-radius: 50%;
   will-change: transform;
   animation: drift ease-in-out infinite alternate;
