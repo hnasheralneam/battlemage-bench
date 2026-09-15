@@ -55,13 +55,56 @@ case "$RECIPE_BACKEND" in
     # --- EDIT ME: your Vulkan-built llama.cpp checkout ---
     LLAMACPP_DIR="${LLAMACPP_VULKAN_DIR:-$HOME/llama.cpp-vulkan}"
     ;;
+  OpenVINO)
+    # --- EDIT ME: your GGML_OPENVINO=ON build, usually the same checkout as
+    # the Vulkan build, in a separate build-openvino/ directory ---
+    LLAMACPP_DIR="${LLAMACPP_OPENVINO_DIR:-$HOME/llama.cpp-vulkan}"
+    LLAMA_BIN_DEFAULT="$LLAMACPP_DIR/build-openvino/bin/llama-server"
+    # Same class of bug as the SYCL/oneAPI one documented above, found the
+    # same way: OpenVINO's own setupvars.sh is SOURCED (runs in this shell)
+    # and references `$python_version` without defaulting it, so under this
+    # file's `set -u` (line 9) it dies instantly and silently mid-source —
+    # confirmed via `bash -x`. Unlike the oneAPI case, there is no small,
+    # stable set of variable names to default up front (this is a vendored
+    # script, its internals are not this repo's to enumerate) — so instead
+    # of whack-a-mole on individual variable names, nounset is turned off
+    # for just the duration of the source call and restored right after.
+    # See docs/SETUP.md's OpenVINO section and HANDOFF-PLAN.md.
+    if [[ -f ~/intel/openvino/setupvars.sh ]]; then
+      set +u
+      source ~/intel/openvino/setupvars.sh > /dev/null 2>&1
+      set -u
+    elif [[ -f /opt/intel/openvino/setupvars.sh ]]; then
+      set +u
+      source /opt/intel/openvino/setupvars.sh > /dev/null 2>&1
+      set -u
+    fi
+    # This backend's graph-compile step is far more host-RAM-hungry than
+    # Vulkan/SYCL's — compiling a ~16GB-class model without these flags was
+    # confirmed (twice, via kernel OOM-kill logs) to exceed 31GB RAM + 15GB
+    # swap on this project's own hardware. GGML_OPENVINO_SPILL_DIR (spills
+    # weight buffers to disk during compile, added upstream in commit
+    # 77d554b) is what actually got a ~16GB model compiling successfully
+    # here — the three MEMORY_OPTIMIZE-family flags alone were not enough.
+    # Defaulted here so a fresh checkout gets a working configuration
+    # out of the box for anything beyond a small model, not just documented
+    # as something the operator has to discover the hard way.
+    export GGML_OPENVINO_DEVICE="${GGML_OPENVINO_DEVICE:-GPU}"
+    export GGML_OPENVINO_MEMORY_OPTIMIZE="${GGML_OPENVINO_MEMORY_OPTIMIZE:-1}"
+    export GGML_OPENVINO_REDUCE_COMPILE_MEM="${GGML_OPENVINO_REDUCE_COMPILE_MEM:-1}"
+    export GGML_OPENVINO_RELEASE_WEIGHTS="${GGML_OPENVINO_RELEASE_WEIGHTS:-1}"
+    export GGML_OPENVINO_SPILL_DIR="${GGML_OPENVINO_SPILL_DIR:-$HOME/.cache/ov-spill}"
+    export GGML_OPENVINO_CACHE_DIR="${GGML_OPENVINO_CACHE_DIR:-$HOME/.cache/ov-cache}"
+    mkdir -p "$GGML_OPENVINO_SPILL_DIR" "$GGML_OPENVINO_CACHE_DIR"
+    ;;
   *)
-    echo "RECIPE_BACKEND must be SYCL or Vulkan, got: $RECIPE_BACKEND" >&2
+    echo "RECIPE_BACKEND must be SYCL, Vulkan, or OpenVINO, got: $RECIPE_BACKEND" >&2
     exit 1
     ;;
 esac
 
-LLAMA_BIN="${LLAMA_BIN:-$LLAMACPP_DIR/build/bin/llama-server}"
+LLAMA_BIN_DEFAULT="${LLAMA_BIN_DEFAULT:-$LLAMACPP_DIR/build/bin/llama-server}"
+LLAMA_BIN="${LLAMA_BIN:-$LLAMA_BIN_DEFAULT}"
 if [[ ! -x "$LLAMA_BIN" ]]; then
   echo "llama-server not found or not executable at: $LLAMA_BIN" >&2
   echo "Set LLAMACPP_${RECIPE_BACKEND^^}_DIR to your checkout, or LLAMA_BIN to the binary." >&2

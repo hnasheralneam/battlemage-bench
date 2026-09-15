@@ -77,13 +77,23 @@ if command -v vulkaninfo >/dev/null 2>&1; then
 fi
 sdk_version_vulkan=$(field_or_unknown "$sdk_version_vulkan")
 
+# --- OpenVINO runtime version ---
+sdk_version_openvino=""
+if [[ -f "$HOME/intel/openvino/runtime/version.txt" ]]; then
+  sdk_version_openvino=$(cat "$HOME/intel/openvino/runtime/version.txt" 2>/dev/null | head -1)
+elif [[ -f /opt/intel/openvino/runtime/version.txt ]]; then
+  sdk_version_openvino=$(cat /opt/intel/openvino/runtime/version.txt 2>/dev/null | head -1)
+fi
+sdk_version_openvino=$(field_or_unknown "$sdk_version_openvino")
+
 cat > "$CACHE_FILE" <<EOF
 {
   "os_name": "$(json_escape "$os_name")",
   "kernel_version": "$(json_escape "$kernel_version")",
   "gpu_driver_version": "$(json_escape "$gpu_driver_version")",
   "sdk_version_sycl": "$(json_escape "$sdk_version_sycl")",
-  "sdk_version_vulkan": "$(json_escape "$sdk_version_vulkan")"
+  "sdk_version_vulkan": "$(json_escape "$sdk_version_vulkan")",
+  "sdk_version_openvino": "$(json_escape "$sdk_version_openvino")"
 }
 EOF
 

@@ -188,10 +188,12 @@ function main() {
   if (v['system-info-file'] && fs.existsSync(v['system-info-file'])) {
     systemInfo = JSON.parse(fs.readFileSync(v['system-info-file'], 'utf8'));
   }
-  const sdkVersion =
-    v['sdk-version'] ||
-    (v.backend === 'SYCL' ? systemInfo.sdk_version_sycl : systemInfo.sdk_version_vulkan) ||
-    null;
+  const sdkVersionByBackend = {
+    SYCL: systemInfo.sdk_version_sycl,
+    Vulkan: systemInfo.sdk_version_vulkan,
+    OpenVINO: systemInfo.sdk_version_openvino,
+  };
+  const sdkVersion = v['sdk-version'] || sdkVersionByBackend[v.backend] || null;
 
   const row = {
     submitter_name: v['submitter-name'] || process.env.USER || 'Anonymous',

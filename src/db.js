@@ -150,6 +150,93 @@ const migrations = [
       `);
     },
   },
+  {
+    version: 6,
+    up: () => {
+      // Third backend: llama.cpp's native OpenVINO GPU plugin
+      // (GGML_OPENVINO=ON). SQLite can't ALTER a CHECK constraint in place,
+      // so this is the same rebuild-and-rename as v3 — everything else about
+      // the table is unchanged, only the `backend` CHECK widens.
+      db.exec(`
+        CREATE TABLE submissions_new (
+          id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+          status                      TEXT NOT NULL DEFAULT 'pending'
+                                        CHECK (status IN ('pending','verified','rejected')),
+          created_at                  TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at                  TEXT NOT NULL DEFAULT (datetime('now')),
+          verified_at                 TEXT,
+          submitter_name              TEXT,
+          submitter_contact           TEXT,
+          card                        TEXT NOT NULL CHECK (card IN ('B70','B65')),
+          backend                     TEXT NOT NULL CHECK (backend IN ('Vulkan','SYCL','OpenVINO')),
+          runtime                     TEXT NOT NULL CHECK (runtime IN ('llama.cpp','vLLM')),
+          model_name                  TEXT NOT NULL,
+          quantization                TEXT NOT NULL,
+          concurrency                 INTEGER NOT NULL DEFAULT 1,
+          context_length              INTEGER NOT NULL,
+          prompt_tokens               INTEGER,
+          flash_attention             TEXT DEFAULT 'unknown' CHECK (flash_attention IN ('on','off','unknown')),
+          mtp                         TEXT DEFAULT 'unknown' CHECK (mtp IN ('on','off','unknown')),
+          tensor_split                TEXT,
+          full_command                TEXT NOT NULL,
+          os_name                     TEXT,
+          kernel_version              TEXT,
+          gpu_driver_version          TEXT,
+          sdk_version                 TEXT,
+          runtime_version             TEXT,
+          power_limit_watts           REAL,
+          measured_power_draw_watts   REAL,
+          vram_used_mb                INTEGER,
+          prompt_eval_tok_s           REAL,
+          generation_tok_s            REAL,
+          tok_s_per_watt REAL GENERATED ALWAYS AS
+            (generation_tok_s / NULLIF(measured_power_draw_watts, 0)) STORED,
+          crashed                     INTEGER NOT NULL DEFAULT 0 CHECK (crashed IN (0,1)),
+          stability_notes             TEXT,
+          raw_log                     TEXT,
+          notes                       TEXT,
+          admin_notes                 TEXT,
+          recipe                      TEXT,
+          kv_cache_type               TEXT,
+          verification_level          TEXT NOT NULL DEFAULT 'community-reported'
+                                        CHECK (verification_level IN
+                                          ('maintainer-measured','reproduced','community-reported')),
+          CHECK (generation_tok_s IS NOT NULL OR crashed = 1)
+        );
+
+        INSERT INTO submissions_new (
+          id, status, created_at, updated_at, verified_at,
+          submitter_name, submitter_contact,
+          card, backend, runtime, model_name, quantization,
+          concurrency, context_length, prompt_tokens,
+          flash_attention, mtp, tensor_split, full_command,
+          os_name, kernel_version, gpu_driver_version, sdk_version, runtime_version,
+          power_limit_watts, measured_power_draw_watts, vram_used_mb,
+          prompt_eval_tok_s, generation_tok_s,
+          crashed, stability_notes, raw_log, notes, admin_notes,
+          recipe, kv_cache_type, verification_level
+        )
+        SELECT
+          id, status, created_at, updated_at, verified_at,
+          submitter_name, submitter_contact,
+          card, backend, runtime, model_name, quantization,
+          concurrency, context_length, prompt_tokens,
+          flash_attention, mtp, tensor_split, full_command,
+          os_name, kernel_version, gpu_driver_version, sdk_version, runtime_version,
+          power_limit_watts, measured_power_draw_watts, vram_used_mb,
+          prompt_eval_tok_s, generation_tok_s,
+          crashed, stability_notes, raw_log, notes, admin_notes,
+          recipe, kv_cache_type, verification_level
+        FROM submissions;
+
+        DROP TABLE submissions;
+        ALTER TABLE submissions_new RENAME TO submissions;
+
+        CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status);
+        CREATE INDEX IF NOT EXISTS idx_submissions_combo  ON submissions(card, backend, runtime, status);
+      `);
+    },
+  },
 ];
 
 function migrate() {

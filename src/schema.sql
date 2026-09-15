@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS submissions (
 
   -- what was tested
   card                        TEXT NOT NULL CHECK (card IN ('B70','B65')),
-  backend                     TEXT NOT NULL CHECK (backend IN ('Vulkan','SYCL')),
+  backend                     TEXT NOT NULL CHECK (backend IN ('Vulkan','SYCL','OpenVINO')),
   runtime                     TEXT NOT NULL CHECK (runtime IN ('llama.cpp','vLLM')),
   model_name                  TEXT NOT NULL,
   quantization                TEXT NOT NULL,

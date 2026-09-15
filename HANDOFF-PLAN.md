@@ -2286,3 +2286,20 @@ Both failures are real kernel OOM kills (confirmed via `journalctl -k` evidence,
 2. **OpenVINO**: built the real native backend, fixed a real build bug (missing `cl2.hpp`), found and documented two real upstream bugs (gemma-3 crash, dynamic-dim translator warnings), confirmed functional correctness at small scale, and conclusively determined (with kernel-level evidence, after multiple genuine attempts with every documented mitigation) that it isn't viable for this site's production-scale models on this box's RAM — documented as a known limitation rather than silently abandoned.
 
 Both are reproducible by a future operator via `docs/SETUP.md`.
+
+## OpenVINO UPDATE (2026-09-15): upstream fix landed — 27B model now loads and runs
+
+llama.cpp merged commit `77d554b` ("OpenVINO: optimize stateful decode and GPU MoE inference", #28638) which added `GGML_OPENVINO_SPILL_DIR` (spills weight buffers to disk during graph compile instead of holding them all in RAM) among many other OpenVINO backend changes (GPU MoE fusion, gemma-4 stateful-decode fixes, various op-translation fixes).
+
+Pulled and rebuilt `~/inference/llama-cpp-vulkan/build-openvino` (410/410, clean). Per user instruction, stopped their live daily-driver server (`run-intel-qwen36-35b.sh`, Qwen3.6-35B-A3B on port 8080) via the llama-dashboard API (`POST /api/stop`) to free RAM/GPU for testing, then retested Qwen3.8-27B with the full flag set:
+```
+GGML_OPENVINO_MEMORY_OPTIMIZE=1 GGML_OPENVINO_REDUCE_COMPILE_MEM=1 GGML_OPENVINO_RELEASE_WEIGHTS=1 GGML_OPENVINO_SPILL_DIR=/home/hna/.cache/ov-spill
+```
+
+**Result: it worked.** The server reached healthy (previously it always died via kernel OOM-kill, confirmed twice with `journalctl -k` evidence in the earlier investigation) and served a real, correct completion (`"The capital of France is" -> " Paris."`). Compile took ~9-10 minutes and pushed the system close to its memory ceiling again (swap hit 15/15Gi full, mem climbed to 26Gi/31Gi at one point) but did not OOM this time — it came back down and reached healthy.
+
+**Caveat: generation is currently slow** — 6.2 tok/s decode, 6.96 tok/s prompt eval in the smoke test, far below SYCL/Vulkan's ~23-24 tok/s for the same model. Whether this is inherent to the backend at this compile configuration (spilled weights may mean weights get re-read from disk during inference, not just compile) or improves with different flags/settings is not yet characterized. The dynamic-dim translator warnings (`state_predelta`/`attn_output` nodes) seen before are still present and unaffected by this update — a separate, still-open issue.
+
+Restarted the user's server (`POST /api/start {"name": "run-intel-qwen36-35b.sh"}`) immediately after the test concluded, per instruction.
+
+**Updated conclusion:** OpenVINO is no longer categorically non-viable for this site's production-scale models on this hardware — the RAM ceiling that blocked Qwen3.8-27B is now clearable with the new spill-to-disk flag. Whether it's worth building a full benchmark recipe depends on the actual achievable throughput once properly characterized (a 3-4x generation-speed deficit vs. SYCL/Vulkan would make it a curiosity, not something worth running the full matrix for) — not yet decided; flagged as the next real step if this gets revisited.

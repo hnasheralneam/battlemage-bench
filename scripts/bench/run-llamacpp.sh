@@ -17,7 +17,7 @@
 # a different prefill length than the one recorded.
 #
 # Usage:
-#   ./run-llamacpp.sh --backend Vulkan|SYCL --card B70|B65 \
+#   ./run-llamacpp.sh --backend Vulkan|SYCL|OpenVINO --card B70|B65 \
 #     --model-path /path/to/model.gguf --model-name "Name" \
 #     --quantization Q4_K_M \
 #     [--concurrency-levels 1,2,4,8,16] [--repeats 4] \
@@ -39,7 +39,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 usage() {
   cat <<'EOF'
-Usage: run-llamacpp.sh --backend <Vulkan|SYCL> --card <B70|B65> \
+Usage: run-llamacpp.sh --backend <Vulkan|SYCL|OpenVINO> --card <B70|B65> \
   --model-path <path> --model-name <name> --quantization <quant> \
   [--concurrency-levels 1,2,4,8,16] [--repeats 4] \
   [--ctx-sizes 8192,65536,131072] [--prefill-lengths 256,7936] \
@@ -101,9 +101,10 @@ done
 
 LAUNCH_SCRIPT="$SCRIPT_DIR/llama-server-launch.sh"
 case "$BACKEND" in
-  Vulkan) CHECKOUT_VAR="LLAMACPP_VULKAN_DIR"; DEFAULT_DIR="$HOME/llama.cpp-vulkan"; RECIPE_BACKEND_SLUG="vulkan" ;;
-  SYCL)   CHECKOUT_VAR="LLAMACPP_SYCL_DIR";   DEFAULT_DIR="$HOME/llama.cpp-sycl";   RECIPE_BACKEND_SLUG="sycl" ;;
-  *) echo "--backend must be Vulkan or SYCL"; exit 1 ;;
+  Vulkan)   CHECKOUT_VAR="LLAMACPP_VULKAN_DIR";   DEFAULT_DIR="$HOME/llama.cpp-vulkan"; RECIPE_BACKEND_SLUG="vulkan" ;;
+  SYCL)     CHECKOUT_VAR="LLAMACPP_SYCL_DIR";     DEFAULT_DIR="$HOME/llama.cpp-sycl";   RECIPE_BACKEND_SLUG="sycl" ;;
+  OpenVINO) CHECKOUT_VAR="LLAMACPP_OPENVINO_DIR"; DEFAULT_DIR="$HOME/llama.cpp-vulkan"; RECIPE_BACKEND_SLUG="openvino" ;;
+  *) echo "--backend must be Vulkan, SYCL, or OpenVINO"; exit 1 ;;
 esac
 
 # Every flag except the swept axes comes from a recipe in ../../recipes, so a
@@ -231,19 +232,28 @@ for N in "${LEVELS[@]}"; do
     "$LAUNCH_SCRIPT" > "$LOG_FILE" 2>&1 &
   SERVER_PID=$!
 
-  # 180s (3 min), not the original 60s: this box runs another autonomous
-  # agent (Hermes) with an hourly cron job that briefly loads its own model
-  # onto the same GPU when it believes the GPU is idle — its idle-detection
-  # doesn't reliably see this sweep's server mid-startup. That contention
-  # window is short enough for vLLM's 360s health-check timeout (see
-  # run-vllm.sh) to ride out, but was long enough to blow through the old
-  # 60s window here and fail an entire context/backend block outright
-  # (confirmed: SYCL's whole 30-cell block failed twice in a row at exactly
-  # this hourly boundary, see HANDOFF-PLAN.md's step 6 incident notes,
-  # 2026-09-12). Not fixable from this side of the fence — just giving
-  # ourselves the same margin vLLM already has.
+  # 180s (3 min) default, not the original 60s: this box runs another
+  # autonomous agent (Hermes) with an hourly cron job that briefly loads its
+  # own model onto the same GPU when it believes the GPU is idle — its
+  # idle-detection doesn't reliably see this sweep's server mid-startup.
+  # That contention window is short enough for vLLM's 360s health-check
+  # timeout (see run-vllm.sh) to ride out, but was long enough to blow
+  # through the old 60s window here and fail an entire context/backend
+  # block outright (confirmed: SYCL's whole 30-cell block failed twice in a
+  # row at exactly this hourly boundary, see HANDOFF-PLAN.md's step 6
+  # incident notes, 2026-09-12). Not fixable from this side of the fence —
+  # just giving ourselves the same margin vLLM already has.
+  #
+  # OpenVINO needs much more than that: its graph-compile step alone was
+  # measured at ~9-10 minutes for a single ~16GB-class model (HANDOFF-PLAN.md,
+  # 2026-09-15) — a real cost of this backend, not a contention symptom — so
+  # it gets its own, longer default rather than sharing Vulkan/SYCL's.
+  HEALTH_TIMEOUT_S="${HEALTH_TIMEOUT_S:-180}"
+  if [[ "$BACKEND" == "OpenVINO" ]]; then
+    HEALTH_TIMEOUT_S="${HEALTH_TIMEOUT_S_OPENVINO:-900}"
+  fi
   READY=0
-  for i in $(seq 1 180); do
+  for i in $(seq 1 "$HEALTH_TIMEOUT_S"); do
     if curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
       READY=1
       break
@@ -257,7 +267,7 @@ for N in "${LEVELS[@]}"; do
   LAUNCH_COMMAND="$CHECKOUT_VAR=$CHECKOUT_DIR BENCH_RECIPE=$RECIPE LLAMA_MODEL_PATH=$MODEL_PATH LLAMA_MODEL_ALIAS=$MODEL_NAME LLAMA_PARALLEL=$N LLAMA_PORT=$PORT LLAMA_CTX_SIZE=$CTX_SIZE $LAUNCH_SCRIPT"
 
   if [[ "$READY" -ne 1 ]]; then
-    echo "  server did not become healthy within 180s — recording as crashed, skipping load test"
+    echo "  server did not become healthy within ${HEALTH_TIMEOUT_S}s — recording as crashed, skipping load test"
     tail -20 "$LOG_FILE"
     stop_server "$SERVER_PID"; SERVER_PID=""
     for P in "${FEASIBLE[@]}"; do
@@ -273,7 +283,7 @@ for N in "${LEVELS[@]}"; do
         --system-info-file "$SYSTEM_INFO_FILE" \
         --mtp "$MTP" \
         --crashed 1 \
-        --stability-notes "Server did not become healthy within 180s at this context size and concurrency level." \
+        --stability-notes "Server did not become healthy within ${HEALTH_TIMEOUT_S}s at this context size and concurrency level." \
         --repeats-json '[{"generation_tok_s":null,"prompt_eval_tok_s":null}]'
       CELLS_RUN=$(( CELLS_RUN + 1 ))
     done

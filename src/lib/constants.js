@@ -1,5 +1,5 @@
 const CARDS = ['B70', 'B65'];
-const BACKENDS = ['Vulkan', 'SYCL'];
+const BACKENDS = ['Vulkan', 'SYCL', 'OpenVINO'];
 const RUNTIMES = ['llama.cpp', 'vLLM'];
 const TRISTATE = ['on', 'off', 'unknown'];
 
