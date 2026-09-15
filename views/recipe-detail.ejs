@@ -11,6 +11,38 @@
     <dt>KV cache</dt><dd><code><%= recipe.kvCacheType %></code></dd>
   </dl>
 
+  <div class="stat-card recipe-headline-stats">
+    <div class="stat">
+      <span class="stat-value"><%= fmt.num(stats.speedSolo && stats.speedSolo.generation_tok_s) %></span>
+      <span class="stat-label">tok/s, solo (concurrency 1)</span>
+      <% if (stats.speedSolo) { %>
+        <span class="recipe-headline-sub">
+          <%= stats.speedSolo.model_name %>, ctx <%= fmt.int(stats.speedSolo.context_length) %>
+        </span>
+      <% } %>
+    </div>
+    <div class="stat">
+      <span class="stat-value"><%= fmt.num(stats.speedParallel && stats.speedParallel.generation_tok_s) %></span>
+      <span class="stat-label">tok/s, <%= parallelConcurrency %> parallel</span>
+      <% if (stats.speedParallel) { %>
+        <span class="recipe-headline-sub">
+          <%= stats.speedParallel.model_name %>, ctx <%= fmt.int(stats.speedParallel.context_length) %>
+        </span>
+      <% } %>
+    </div>
+    <div class="stat">
+      <span class="stat-value"><%= fmt.int(stats.maxContext) %></span>
+      <span class="stat-label">max context, clean run</span>
+    </div>
+  </div>
+  <% if (!stats.speedSolo || !stats.speedParallel || !stats.maxContext) { %>
+    <p class="section-note">
+      One or more headline numbers above has no clean run yet at that exact
+      concurrency — shown as "not measured" rather than guessed.
+      <a href="/submit">Submit a result</a> to fill it in.
+    </p>
+  <% } %>
+
   <h2>What it is for</h2>
   <pre class="command-block"><%= recipe.description %></pre>
 

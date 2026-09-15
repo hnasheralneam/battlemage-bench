@@ -177,6 +177,49 @@ function bestRunForRecipeAtConcurrency(recipe, maxConcurrency) {
   );
 }
 
+// The representative "speed at N parallel" figure for a recipe: the
+// clean run at exactly that concurrency level, preferring the reference
+// cell's short prefill (REFERENCE_CELL.prompt_tokens) and the smallest
+// context tested — so "speed solo" and "speed at 8" are read off the same
+// workload shape a recipe card compares like-for-like, rather than each
+// picking whichever context/prefill combination happened to score highest.
+// Falls back to the highest-throughput row at that concurrency if no row
+// matches the reference prefill exactly (e.g. a recipe never tested at 256
+// prompt tokens) — a real number beats a missing one.
+function bestRunForRecipeAtExactConcurrency(recipe, concurrency) {
+  return (
+    db
+      .prepare(
+        `SELECT * FROM (
+           SELECT *, ROW_NUMBER() OVER (
+             ORDER BY
+               (prompt_tokens = @refPromptTokens) DESC,
+               context_length ASC,
+               generation_tok_s DESC
+           ) AS rn
+           FROM submissions
+           WHERE status = 'verified' AND recipe = @recipe AND concurrency = @concurrency
+             AND crashed = 0 AND generation_tok_s IS NOT NULL
+         ) WHERE rn = 1`
+      )
+      .get({ recipe, concurrency, refPromptTokens: REFERENCE_CELL.prompt_tokens }) || null
+  );
+}
+
+// Largest context length this recipe has a clean (non-crashed) run at, for
+// the "context" headline stat — what it actually reached, not what the
+// recipe's default --ctx-size claims, so a context tier that only crashes
+// doesn't get advertised as achieved.
+function maxCleanContextForRecipe(recipe) {
+  const row = db
+    .prepare(
+      `SELECT MAX(context_length) AS max_context FROM submissions
+       WHERE status = 'verified' AND recipe = ? AND crashed = 0 AND generation_tok_s IS NOT NULL`
+    )
+    .get(recipe);
+  return row?.max_context ?? null;
+}
+
 function getVerifiedForCombo(card, backend, runtime) {
   return db
     .prepare(
@@ -296,5 +339,7 @@ module.exports = {
   getVerifiedForCombo,
   bestRunForRecipe,
   bestRunForRecipeAtConcurrency,
+  bestRunForRecipeAtExactConcurrency,
+  maxCleanContextForRecipe,
   getStats,
 };

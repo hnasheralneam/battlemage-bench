@@ -34,35 +34,49 @@
       quantisation and a slower decode. For long documents and RAG.
     </dd>
   </dl>
+</section>
+
+<section class="section">
+  <h2>Every recipe, measured</h2>
+  <p class="section-note">
+    Solo and <%= parallelConcurrency %>-parallel are read off the same short-prefill
+    workload so the two numbers are comparable to each other; context is the
+    largest size this recipe has actually completed a clean run at, not the
+    recipe's configured ceiling.
+  </p>
 
   <% if (recipes.length === 0) { %>
     <p class="empty-state">No recipe files found.</p>
   <% } else { %>
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Recipe</th>
-            <th>Runtime</th>
-            <th>Backend</th>
-            <th>Profile</th>
-            <th>KV cache</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <% recipes.forEach(function(r) { %>
-            <tr>
-              <td><a href="/recipes/<%= r.name %>"><code><%= r.name %></code></a></td>
-              <td><%= r.runtime %></td>
-              <td><%= r.backend %></td>
-              <td><%= r.profile %></td>
-              <td><code><%= r.kvCacheType %></code></td>
-              <td><a href="/results?recipe=<%= r.name %>">Results →</a></td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
+    <div class="recipe-card-grid">
+      <% recipes.forEach(function(r) { %>
+        <a class="recipe-card link-card" href="/recipes/<%= r.name %>">
+          <div class="recipe-card-head">
+            <code class="recipe-card-name"><%= r.name %></code>
+            <span class="recipe-card-badges">
+              <span class="badge badge-tag"><%= r.backend %></span>
+              <span class="badge badge-tag"><%= r.runtime %></span>
+              <span class="badge badge-tag"><%= r.profile %></span>
+            </span>
+          </div>
+          <div class="feature-card-stat-row recipe-card-stats">
+            <div class="feature-card-stat">
+              <span class="stat-value"><%= fmt.num(r.stats.speedSolo && r.stats.speedSolo.generation_tok_s) %></span>
+              <span class="stat-label">tok/s solo</span>
+            </div>
+            <div class="feature-card-stat">
+              <span class="stat-value"><%= fmt.num(r.stats.speedParallel && r.stats.speedParallel.generation_tok_s) %></span>
+              <span class="stat-label">tok/s @ <%= parallelConcurrency %>x</span>
+            </div>
+            <div class="feature-card-stat">
+              <span class="stat-value"><%= fmt.int(r.stats.maxContext) %></span>
+              <span class="stat-label">max context</span>
+            </div>
+          </div>
+          <p class="recipe-card-kv">KV cache: <code><%= r.kvCacheType %></code></p>
+          <span class="link-card-arrow" aria-hidden="true">→</span>
+        </a>
+      <% }) %>
     </div>
   <% } %>
 
