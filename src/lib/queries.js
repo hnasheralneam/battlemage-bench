@@ -138,6 +138,45 @@ function bestPerCombo() {
     });
 }
 
+// Single best (highest generation_tok_s, non-crashed) verified run for one
+// named recipe — the evidence line behind a homepage "featured recipe" card.
+// Returns null rather than a row with nulls if the recipe has never
+// completed a clean run, so the view can render an honest "no clean run
+// yet" state instead of a fabricated zero.
+function bestRunForRecipe(recipe) {
+  return (
+    db
+      .prepare(
+        `SELECT * FROM submissions
+         WHERE status = 'verified' AND recipe = ? AND crashed = 0 AND generation_tok_s IS NOT NULL
+         ORDER BY generation_tok_s DESC
+         LIMIT 1`
+      )
+      .get(recipe) || null
+  );
+}
+
+// Same as bestRunForRecipe, but capped to a concurrency ceiling. The
+// unqualified "best run" naturally lands on the highest concurrency tested
+// (8 or 16) — a real number, but not the one a single person or a couple of
+// household users is actually going to see, since throughput scales with
+// how many requests are in flight at once. This is the evidence line for a
+// homepage card aimed at that reader instead: "what do I get running this
+// alone, or with one other person."
+function bestRunForRecipeAtConcurrency(recipe, maxConcurrency) {
+  return (
+    db
+      .prepare(
+        `SELECT * FROM submissions
+         WHERE status = 'verified' AND recipe = ? AND crashed = 0 AND generation_tok_s IS NOT NULL
+           AND concurrency <= ?
+         ORDER BY generation_tok_s DESC
+         LIMIT 1`
+      )
+      .get(recipe, maxConcurrency) || null
+  );
+}
+
 function getVerifiedForCombo(card, backend, runtime) {
   return db
     .prepare(
@@ -255,5 +294,7 @@ module.exports = {
   backendComparison,
   knownBadRuns,
   getVerifiedForCombo,
+  bestRunForRecipe,
+  bestRunForRecipeAtConcurrency,
   getStats,
 };
