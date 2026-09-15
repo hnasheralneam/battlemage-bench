@@ -105,6 +105,24 @@ If you're debugging a variant of this failure in your own shell setup
 outside this repo's recipes, `bash -x` while sourcing `setvars.sh` directly
 will show exactly which variable it dies on.
 
+**Troubleshooting: every cell in a sweep crashes instantly, even though a
+single manual launch works fine.** Don't source `/opt/intel/oneapi/setvars.sh`
+in the shell that *launches* a sweep (`run-llamacpp.sh`/`run-vllm.sh`/
+`run-all.sh`) — only inside an individual recipe, which every SYCL recipe
+already does for you via `recipes/lib/llamacpp-common.sh`. `setvars.sh` sets
+`SETVARS_COMPLETED=1` on success and refuses to re-run in a shell that
+already has it set — sourcing it again there exits non-zero instead of
+re-initializing. That export is inherited by every child process the
+launching shell spawns for the rest of the sweep, so once the *orchestrating*
+shell has it set, every single cell's own internal `source setvars.sh`
+inside `llamacpp-common.sh` hits the same guard and dies the same way as
+the unbound-variable bug above (output redirected to `/dev/null`, `set -e`
+kills the cell silently). Confirmed via `bash -x` plus checking the exit
+code of a deliberate second `source` in the same shell (`rc=3`). A one-off
+manual launch works because that shell never had `SETVARS_COMPLETED` set to
+begin with — the bug only shows up once something sources `setvars.sh`
+*before* invoking the sweep and then reuses that same shell for it.
+
 **Expected, non-bug crashes:** cells combining long prefill (~7936 tokens)
 with high concurrency, especially at smaller context sizes, are a genuine
 capacity limit on this hardware/driver combination — they crash consistently
