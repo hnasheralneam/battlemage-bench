@@ -40,7 +40,6 @@ VLLM_MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-4}"
 # OOM if the model or quant is larger than the ones benchmarked here.
 
 RECIPE_ARGS=(
-  --device xpu
   --max-model-len "$VLLM_MAX_MODEL_LEN"
   --max-num-seqs "$VLLM_MAX_NUM_SEQS"
   --gpu-memory-utilization 0.95

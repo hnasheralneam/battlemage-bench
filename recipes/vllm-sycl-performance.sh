@@ -40,7 +40,6 @@ VLLM_MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-8}"
 # is room for it, and it is the only setting here with no quality cost.
 
 RECIPE_ARGS=(
-  --device xpu
   --max-model-len "$VLLM_MAX_MODEL_LEN"
   --max-num-seqs "$VLLM_MAX_NUM_SEQS"
   --gpu-memory-utilization 0.90

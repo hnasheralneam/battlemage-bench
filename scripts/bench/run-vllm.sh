@@ -24,7 +24,13 @@
 #     [--concurrency-levels 1,2,4,8,16] [--repeats 4] \
 #     [--max-model-lens 8192,65536,131072] [--prefill-lengths 256,7936] \
 #     [--max-tokens 256] [--num-prompts-per-level <n>] \
-#     [--recipe vllm-sycl-balanced] [--resume] [--port 8091] [--results-file results/<timestamp>.jsonl]
+#     [--recipe vllm-sycl-balanced] [--mtp on|off|unknown] \
+#     [--resume] [--port 8091] [--results-file results/<timestamp>.jsonl]
+#
+# --mtp is metadata only, forwarded as-is to emit-submission.js — it does not
+# itself turn MTP on. To actually run MTP, pass --recipe vllm-sycl-mtp
+# (optionally export VLLM_SPEC_NUM_TOKENS); then also pass --mtp on so the
+# row records that accurately instead of the default "unknown".
 
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,7 +67,8 @@ MAX_TOKENS=256
 NUM_PROMPTS_PER_LEVEL=""
 RESUME=0
 RECIPE=""
-PORT=8091
+MTP="unknown"  # forwarded as-is to emit-submission.js; pass --mtp on when running an -mtp recipe
+PORT=18091  # 8080-8094ish are occupied by other services on this box — see HANDOFF-PLAN.md
 RESULTS_FILE="$SCRIPT_DIR/results/$(date +%Y%m%d-%H%M%S).jsonl"
 
 while [[ $# -gt 0 ]]; do
@@ -78,6 +85,7 @@ while [[ $# -gt 0 ]]; do
     --num-prompts-per-level) NUM_PROMPTS_PER_LEVEL="$2"; shift 2 ;;
     --resume) RESUME=1; shift ;;
     --recipe) RECIPE="$2"; shift 2 ;;
+    --mtp) MTP="$2"; shift 2 ;;
     --port) PORT="$2"; shift 2 ;;
     --results-file) RESULTS_FILE="$2"; shift 2 ;;
     -h|--help) usage ;;
@@ -119,11 +127,31 @@ if [[ ! -f "$SYSTEM_INFO_FILE" ]]; then
 fi
 
 SERVER_PID=""
+
+# SIGTERM, then wait up to 30s (polling, not a blocking `wait`), then SIGKILL
+# if it still hasn't exited. A plain `kill; wait` can hang the whole sweep
+# indefinitely if vLLM doesn't respond to SIGTERM promptly (observed on this
+# box: a server sat alive with no client running and 25+ minutes of wall
+# time elapsed with no progress, at the end of an otherwise-complete
+# max-model-len block, until the process was killed by hand -- see
+# HANDOFF-PLAN.md). A bounded wait with a kill -9 fallback means a slow
+# shutdown costs the sweep 30s once, not the rest of the run.
+stop_server() {
+  local pid="$1"
+  [[ -z "$pid" ]] && return 0
+  kill -0 "$pid" 2>/dev/null || return 0
+  kill "$pid" 2>/dev/null
+  for _ in $(seq 1 30); do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 1
+  done
+  echo "  server pid $pid did not exit within 30s of SIGTERM -- sending SIGKILL" >&2
+  kill -9 "$pid" 2>/dev/null
+  wait "$pid" 2>/dev/null
+}
+
 cleanup() {
-  if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
-    kill "$SERVER_PID" 2>/dev/null
-    wait "$SERVER_PID" 2>/dev/null
-  fi
+  stop_server "$SERVER_PID"
 }
 trap cleanup EXIT INT TERM
 
@@ -185,7 +213,7 @@ for MAX_MODEL_LEN in "${CTX_LEVELS[@]}"; do
   if [[ "$READY" -ne 1 ]]; then
     echo "vLLM server did not become healthy at max-model-len=$MAX_MODEL_LEN — recording every cell at this context level as crashed"
     tail -30 "$SERVER_LOG"
-    kill "$SERVER_PID" 2>/dev/null; wait "$SERVER_PID" 2>/dev/null; SERVER_PID=""
+    stop_server "$SERVER_PID"; SERVER_PID=""
     for N in "${LEVELS[@]}"; do
       for P in "${FEASIBLE[@]}"; do
         node "$SCRIPT_DIR/lib/emit-submission.js" \
@@ -197,6 +225,7 @@ for MAX_MODEL_LEN in "${CTX_LEVELS[@]}"; do
           --recipe "$RECIPE" --kv-cache-type "$KV_CACHE_TYPE" \
           --runtime-version "$RUNTIME_VERSION" \
           --system-info-file "$SYSTEM_INFO_FILE" \
+          --mtp "$MTP" \
           --crashed 1 \
           --stability-notes "vLLM server did not become healthy within 360s at max-model-len=$MAX_MODEL_LEN." \
           --repeats-json '[{"generation_tok_s":null,"prompt_eval_tok_s":null}]'
@@ -207,7 +236,9 @@ for MAX_MODEL_LEN in "${CTX_LEVELS[@]}"; do
     continue
   fi
 
+  SERVER_DIED=0
   for N in "${LEVELS[@]}"; do
+    (( SERVER_DIED )) && break
     for P in "${FEASIBLE[@]}"; do
       if (( RESUME )) && node "$SCRIPT_DIR/lib/has-cell.js" --file "$RESULTS_FILE" \
            --card "$CARD" --backend SYCL --runtime "vLLM" \
@@ -216,6 +247,30 @@ for MAX_MODEL_LEN in "${CTX_LEVELS[@]}"; do
         echo "  resume: max-model-len=$MAX_MODEL_LEN concurrency=$N prefill=$P already recorded, skipping"
         CELLS_RESUMED=$(( CELLS_RESUMED + 1 ))
         continue
+      fi
+      # Fail fast if the server already died mid-block (see the crash-flag
+      # fix above for why this matters): without this check every remaining
+      # cell at this max-model-len would silently run its full repeat count
+      # against a dead server and only get caught by the (now-fixed)
+      # requests_completed check, one slow cell at a time.
+      if ! curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
+        echo "  vLLM server died mid-block (max-model-len=$MAX_MODEL_LEN) — recording remaining cells at this context as crashed, not attempting them"
+        node "$SCRIPT_DIR/lib/emit-submission.js" \
+          --results-file "$RESULTS_FILE" \
+          --card "$CARD" --backend SYCL --runtime "vLLM" \
+          --model-name "$MODEL_NAME" --quantization "$QUANTIZATION" \
+          --concurrency "$N" --context-length "$MAX_MODEL_LEN" --prompt-tokens "$P" \
+          --full-command "$FULL_COMMAND_LAUNCH" \
+          --recipe "$RECIPE" --kv-cache-type "$KV_CACHE_TYPE" \
+          --runtime-version "$RUNTIME_VERSION" \
+          --system-info-file "$SYSTEM_INFO_FILE" \
+          --mtp "$MTP" \
+          --crashed 1 \
+          --stability-notes "vLLM server died mid-block at max-model-len=$MAX_MODEL_LEN (found dead before this cell started)." \
+          --repeats-json '[{"generation_tok_s":null,"prompt_eval_tok_s":null}]'
+        CELLS_RUN=$(( CELLS_RUN + 1 ))
+        SERVER_DIED=1
+        break
       fi
       echo "=== $CARD / SYCL / vLLM @ max-model-len=$MAX_MODEL_LEN, concurrency=$N, prefill=$P ==="
       NUM_PROMPTS="${NUM_PROMPTS_PER_LEVEL:-$((N * 10))}"
@@ -240,15 +295,29 @@ for MAX_MODEL_LEN in "${CTX_LEVELS[@]}"; do
         console.log(JSON.stringify(lines.map((l) => JSON.parse(l))));
       ")
 
+      # Two independent crash signatures, checked separately so the message
+      # says which one actually happened: (a) the `vllm bench serve`
+      # subprocess itself produced no readable result file (parse-vllm-
+      # result.js's 'unreadable' fallback — the tool crashed or never ran),
+      # and (b) the tool ran fine and returned valid JSON, but the server
+      # was already dead/unresponsive underneath it, so zero requests
+      # actually completed (`requests_completed === 0`). (b) was previously
+      # unchecked — a cell where every single request failed against a
+      # crashed server was silently recorded as crashed=0, because
+      # 'unreadable' only covers the client-tool-crashed case, not
+      # server-crashed-but-client-ran-fine. Discovered when a vLLM server
+      # died partway through its first max-model-len block (2026-09-12) and
+      # every subsequent cell in that block kept reporting crashed=0 with
+      # generation_tok_s=0 for the rest of the block's lifetime.
       ANY_ZERO_COMPLETED=$(node -e "
         const arr = $REPEATS_JSON;
-        console.log(arr.some((r) => r.generation_tok_s === 0 && r.source === 'unreadable') ? '1' : '0');
+        console.log(arr.some((r) => r.source === 'unreadable' || !r.requests_completed) ? '1' : '0');
       ")
       CRASHED_FLAG=0
       STABILITY_NOTES=""
       if [[ "$ANY_ZERO_COMPLETED" == "1" ]]; then
         CRASHED_FLAG=1
-        STABILITY_NOTES="One or more repeats produced no readable vllm bench serve result at this cell."
+        STABILITY_NOTES="One or more repeats had zero successful requests or no readable vllm bench serve result at this cell — possible crash/hang mid-run."
       fi
 
       node "$SCRIPT_DIR/lib/emit-submission.js" \
@@ -260,6 +329,7 @@ for MAX_MODEL_LEN in "${CTX_LEVELS[@]}"; do
         --recipe "$RECIPE" --kv-cache-type "$KV_CACHE_TYPE" \
         --runtime-version "$RUNTIME_VERSION" \
         --system-info-file "$SYSTEM_INFO_FILE" \
+        --mtp "$MTP" \
         --crashed "$CRASHED_FLAG" \
         --stability-notes "$STABILITY_NOTES" \
         --repeats-json "$REPEATS_JSON"
@@ -269,7 +339,7 @@ for MAX_MODEL_LEN in "${CTX_LEVELS[@]}"; do
     done
   done
 
-  kill "$SERVER_PID" 2>/dev/null; wait "$SERVER_PID" 2>/dev/null; SERVER_PID=""
+  stop_server "$SERVER_PID"; SERVER_PID=""
   rm -f "$SERVER_LOG"
 done
 

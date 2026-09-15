@@ -143,7 +143,7 @@ while IFS= read -r CARD <&3; do
   # (fd 3, not stdin, above: the read -rp here needs stdin free — see the
   # comment on the equivalent fix in run-matrix.sh.)
 
-  while IFS=$'\t' read -r NAME LLAMACPP_PATH LLAMACPP_QUANT VLLM_MODEL VLLM_QUANT; do
+  while IFS=$'\t' read -r NAME LLAMACPP_PATH LLAMACPP_QUANT VLLM_MODEL VLLM_QUANT <&4; do
     [[ -z "$NAME" ]] && continue
     SLUG="$(slugify "$CARD")-$(slugify "$NAME")"
     RESULTS_FILE="$RESULTS_DIR/$SLUG.jsonl"
@@ -168,7 +168,15 @@ while IFS= read -r CARD <&3; do
       echo "!!! run-matrix.sh exited non-zero for $CARD / $NAME — see output above. Continuing with the next model."
       FAILED_INVOCATIONS+=("$CARD / $NAME")
     fi
-  done <<< "$MODEL_ROWS"
+  done 4<<< "$MODEL_ROWS"
+  # (fd 4, not stdin, above: run-matrix.sh itself does `read -rp` on stdin
+  # for its own per-card confirmation — see run-matrix.sh's comment. Without
+  # a dedicated fd here, that read silently consumes the next line of
+  # $MODEL_ROWS as its "Enter" keypress, which both skips the real prompt
+  # unnoticed AND truncates this loop to just the first model. Discovered
+  # 2026-09-13: three consecutive full sweeps for Qwen3.8-27B each printed
+  # "Sweep complete" without ever touching the second models.json entry
+  # (Qwen3.6-35B-A3B) — see HANDOFF-PLAN.md.)
 done 3<<< "$CARDS"
 
 echo ""

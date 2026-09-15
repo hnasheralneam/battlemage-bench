@@ -31,4 +31,31 @@ fi
 # shellcheck disable=SC1090
 source "$RECIPE_FILE"
 
+# Compatibility shim: the recipes were written against an older vLLM CLI that
+# took `--device xpu` to select the platform. The installed vLLM (0.29.0,
+# prebuilt XPU wheel — see HANDOFF-PLAN.md) auto-detects the platform via
+# torch.xpu instead; `--device xpu` now fails hard
+# (`ValueError: Non-integer device ID 'xpu' is not supported by xpu`) because
+# newer vLLM repurposed --device for a numeric physical-device-id list. Strip
+# it here rather than in the recipe files themselves, so the recipes stay the
+# documented/published source of truth and this repair lives entirely in the
+# runner. If a future vLLM version's --device semantics change again, this is
+# the one place to revisit.
+if [[ -n "${RECIPE_ARGS+x}" ]]; then
+  FILTERED_ARGS=()
+  skip_next=0
+  for arg in "${RECIPE_ARGS[@]}"; do
+    if [[ "$skip_next" == 1 ]]; then
+      skip_next=0
+      continue
+    fi
+    if [[ "$arg" == "--device" ]]; then
+      skip_next=1
+      continue
+    fi
+    FILTERED_ARGS+=("$arg")
+  done
+  RECIPE_ARGS=("${FILTERED_ARGS[@]}")
+fi
+
 recipe_launch

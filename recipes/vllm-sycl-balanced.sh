@@ -40,7 +40,6 @@ VLLM_MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-16}"
 # quality cost on these models.
 
 RECIPE_ARGS=(
-  --device xpu
   --max-model-len "$VLLM_MAX_MODEL_LEN"
   --max-num-seqs "$VLLM_MAX_NUM_SEQS"
   --gpu-memory-utilization 0.90

@@ -5,3 +5,4 @@ data/*.db-*
 *.log
 .claude/
 .zcode/
+scripts/bench/results/

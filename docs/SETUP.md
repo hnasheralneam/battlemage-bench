@@ -80,6 +80,37 @@ source /opt/intel/oneapi/setvars.sh && ~/llama.cpp-sycl/build/bin/llama-server -
 Both should print a version, and the SYCL one should not complain about
 missing oneAPI libraries.
 
+**Troubleshooting: SYCL server dies instantly with an empty log, no error.**
+This has one specific, confirmed root cause on record — it is *not* GPU
+contention with something else running, despite how it looks and despite
+that theory having been the working assumption for a long time in this
+project's history. `recipes/lib/llamacpp-common.sh` runs under `set -euo
+pipefail` and sources oneAPI's own `setvars.sh` (which runs in the *current*
+shell, not a subshell). A few layers down, `setvars.sh` itself references
+`$OCL_ICD_FILENAMES` and `$TCM_ROOT` without defaulting them, assuming the
+caller already exported them. Under `set -u`, referencing either unset
+variable is an immediate, unconditional hard error in the current shell —
+this is `nounset`, independent of `errexit`, and is not caught by `|| true`
+or by wrapping the source in `set +e`. The script dies mid-way through
+`setvars.sh`, before printing anything (its output is redirected to
+`/dev/null` to keep the recipe quiet), which is exactly why the crash looks
+instant and silent. The fix (already applied in this repo's
+`recipes/lib/llamacpp-common.sh`) is to default both variables to empty
+string immediately before sourcing `setvars.sh`:
+```bash
+export OCL_ICD_FILENAMES="${OCL_ICD_FILENAMES:-}"
+export TCM_ROOT="${TCM_ROOT:-}"
+```
+If you're debugging a variant of this failure in your own shell setup
+outside this repo's recipes, `bash -x` while sourcing `setvars.sh` directly
+will show exactly which variable it dies on.
+
+**Expected, non-bug crashes:** cells combining long prefill (~7936 tokens)
+with high concurrency, especially at smaller context sizes, are a genuine
+capacity limit on this hardware/driver combination — they crash consistently
+and reproducibly across both the Vulkan and SYCL backends. That's real data,
+not something to chase as a bug.
+
 ---
 
 ## 3. vLLM with the XPU backend
@@ -107,6 +138,87 @@ curl -sf http://localhost:8000/health && echo "vLLM healthy"
 Get this far *before* starting a full sweep. A third of the test matrix runs
 through vLLM, and discovering it doesn't start after the llama.cpp half has
 already run wastes hours.
+
+---
+
+## 3b. OpenVINO (experimental, llama.cpp's native `GGML_OPENVINO` backend)
+
+This is **not** part of the site's regular Vulkan/SYCL/vLLM sweep — it was
+evaluated once, thoroughly, and the findings below are the result. Treat this
+section as a report on what actually happens, not a recommended setup path.
+
+**Build:** llama.cpp upstream ships `ggml/src/ggml-openvino/` as a standard
+cmake option (`-DGGML_OPENVINO=ON`), built against the same checkout as the
+Vulkan backend.
+
+```bash
+# No root available in this environment — install the OpenVINO runtime to a
+# user-writable location instead of the documented /opt/intel path:
+#   download the OpenVINO Linux runtime archive for your version, extract to
+#   ~/intel/openvino_<version> and symlink ~/intel/openvino -> that directory.
+source ~/intel/openvino/setupvars.sh
+cmake -S ~/llama.cpp-vulkan -B ~/llama.cpp-vulkan/build-openvino \
+  -DGGML_OPENVINO=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build ~/llama.cpp-vulkan/build-openvino --config Release -j
+```
+
+**Build bug found and fixed:** `ggml-openvino.cpp` / `ggml-openvino-extra.cpp`
+`#include <CL/cl2.hpp>`, which this system's OpenCL headers package doesn't
+ship (upstream KhronosGroup renamed `cl2.hpp` → `opencl.hpp` and normally
+ships a one-line forwarding shim for the old name under the new package —
+this system's headers package is missing that shim). Fix: fetch both
+`CL/cl2.hpp` and `CL/opencl.hpp` from the upstream
+[KhronosGroup/OpenCL-CLHPP](https://github.com/KhronosGroup/OpenCL-CLHPP)
+repo into a local include dir and pass it as an extra `-I` via
+`CMAKE_CXX_FLAGS`/`CMAKE_C_FLAGS`.
+
+**Confirmed working, small models only:** `GGML_OPENVINO_DEVICE=GPU` against
+Qwen3-0.6B produces real, coherent completions at 47.7 tok/s. The backend
+itself is genuinely functional on this hardware.
+
+**Confirmed hard limitation: none of the site's three production models
+(16-21GB GGUF each) fit in this box's RAM for OpenVINO's graph compile step,**
+even with every documented memory-reduction env var stacked together
+(`GGML_OPENVINO_MEMORY_OPTIMIZE=1 GGML_OPENVINO_REDUCE_COMPILE_MEM=1
+GGML_OPENVINO_RELEASE_WEIGHTS=1`). Reproduced twice against Qwen3.8-27B (the
+*smallest* of the three, 16GB), both attempts ending in the kernel OOM-killer
+terminating `llama-server` (`journalctl -k`: `Out of memory: Killed process
+... llama-server ... anon-rss:~16-17GB`) after total memory+swap pressure
+climbed past 40GB+ on this box's 31GB RAM / 15GB swap. Compile-time RAM
+overhead for this backend runs several times the GGUF file size — not a
+config mistake, a real characteristic of the current OpenVINO graph-build
+path for models this size. **Practical implication:** don't attempt
+OpenVINO with this site's production-scale models below ~64GB of RAM
+available to the process; a box with only 31GB total cannot run them
+regardless of flags.
+
+**Real translator bug found (informational, not fixed here — upstream
+code):** during the (failed) compile attempts above, the log filled with
+thousands of repeated warnings of the form:
+```
+ggml-openvino: cannot determine dynamic dim for RESHAPE node 'state_predelta-N'
+ggml-openvino: dynamic dim value mismatch for VIEW node 'attn_output-N', src[0]: 'node_NNNN'
+```
+one pair per transformer layer. This looks like a genuine gap in the
+backend's dynamic-shape inference for whatever internal state-tensor pattern
+these models use, not something caused by any flag here — filed as a known
+limitation of the current (preview-stage) backend, out of scope to patch in
+this repo.
+
+**Real functional bug found: gemma-3 crashes on every completion request.**
+Smoke-tested separately with `gemma-3-1b-it-Q4_K_M` — the server reports
+healthy, but every real completion fails with a `500 Compute error`:
+`ov::Exception ... [GPU] The tensor size is not equal to model ...`.
+Reproduced identically at `-np 1` and with
+`GGML_OPENVINO_MANUAL_GQA_ATTN=0` forced, so it isn't a batching or
+GQA-heuristic issue. **Don't use gemma-family models with the OpenVINO
+backend on this box** until upstream fixes it.
+
+**Bottom line:** the backend is real and works for small models, but is not
+currently viable for this site's actual benchmark matrix on this hardware —
+documented here instead of silently skipped, so a future attempt (more RAM,
+an upstream fix, or a smaller quantization) has a concrete starting point
+rather than repeating this investigation from scratch.
 
 ---
 
